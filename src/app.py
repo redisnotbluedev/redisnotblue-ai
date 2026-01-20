@@ -7,7 +7,6 @@ import uuid
 import time
 
 from registry import ModelRegistry
-from models import Message
 
 registry: Optional[ModelRegistry] = None
 
