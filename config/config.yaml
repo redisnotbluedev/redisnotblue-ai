@@ -1,0 +1,43 @@
+# OpenAI Proxy Configuration
+
+providers:
+  openai:
+    type: openai
+    api_key: ${OPENAI_API_KEY}
+    base_url: https://api.openai.com/v1
+
+  openai-backup:
+    type: openai
+    api_key: ${OPENAI_BACKUP_API_KEY}
+    base_url: https://api.openai.com/v1
+
+models:
+  gpt-4:
+    owned_by: openai
+    providers:
+      openai:
+        priority: 0
+        model_id: gpt-4
+      openai-backup:
+        priority: 1
+        model_id: gpt-4
+
+  gpt-4-turbo:
+    owned_by: openai
+    providers:
+      openai:
+        priority: 0
+        model_id: gpt-4-turbo-preview
+      openai-backup:
+        priority: 1
+        model_id: gpt-4-turbo-preview
+
+  gpt-3.5-turbo:
+    owned_by: openai
+    providers:
+      openai:
+        priority: 0
+        model_id: gpt-3.5-turbo
+      openai-backup:
+        priority: 1
+        model_id: gpt-3.5-turbo
