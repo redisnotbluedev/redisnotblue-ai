@@ -3,7 +3,6 @@
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, List
-from collections import deque
 
 if TYPE_CHECKING:
     from providers.base import Provider
@@ -23,9 +22,9 @@ class ApiKeyRotation:
 
     api_keys: List[str]
     current_index: int = 0
-    consecutive_failures: dict = field(default_factory=dict)  # Track failures per key
-    disabled_keys: dict = field(default_factory=dict)  # Track disabled keys with timestamps
-    cooldown_seconds: int = 600  # 10 minutes
+    consecutive_failures: dict = field(default_factory=dict)
+    disabled_keys: dict = field(default_factory=dict)
+    cooldown_seconds: int = 600
 
     def __post_init__(self):
         """Initialize failure tracking for all keys."""
@@ -38,17 +37,14 @@ class ApiKeyRotation:
         if not self.api_keys:
             raise ValueError("No API keys configured")
 
-        # Check and re-enable keys if cooldown passed
         self._check_cooldowns()
 
-        # Get available keys (not disabled)
         available_keys = [
             key for key in self.api_keys
             if self.disabled_keys.get(key) is None
         ]
 
         if not available_keys:
-            # All keys disabled, try to re-enable the oldest one
             oldest_key = min(
                 self.disabled_keys.items(),
                 key=lambda x: x[1] if x[1] else float('inf')
@@ -57,17 +53,13 @@ class ApiKeyRotation:
             self.consecutive_failures[oldest_key] = 0
             available_keys = [oldest_key]
 
-        # Find next available key starting from current index
-        found = False
         for _ in range(len(self.api_keys)):
             key = self.api_keys[self.current_index % len(self.api_keys)]
             self.current_index = (self.current_index + 1) % len(self.api_keys)
 
             if key in available_keys:
-                found = True
                 return key
 
-        # Fallback (shouldn't happen)
         return available_keys[0]
 
     def mark_failure(self, api_key: str) -> None:
@@ -77,10 +69,6 @@ class ApiKeyRotation:
 
         self.consecutive_failures[api_key] += 1
         self.disabled_keys[api_key] = time.time()
-
-        if self.consecutive_failures[api_key] >= 3:
-            # Keep it disabled
-            pass
 
     def mark_success(self, api_key: str) -> None:
         """Mark an API key as having succeeded."""
@@ -102,31 +90,10 @@ class ApiKeyRotation:
                 self.disabled_keys[key] = None
                 self.consecutive_failures[key] = 0
 
-    def get_status(self) -> dict:
-        """Get status of all API keys."""
-        self._check_cooldowns()
-        return {
-            "total_keys": len(self.api_keys),
-            "available_keys": sum(
-                1 for key in self.api_keys
-                if self.disabled_keys.get(key) is None
-            ),
-            "keys": [
-                {
-                    "index": i,
-                    "failures": self.consecutive_failures.get(key, 0),
-                    "enabled": self.disabled_keys.get(key) is None,
-                    "disabled_since": self.disabled_keys.get(key),
-                }
-                for i, key in enumerate(self.api_keys)
-            ]
-        }
-
 
 @dataclass
 class ProviderInstance:
     """Represents a provider instance for a specific model."""
-
     provider: "Provider"
     priority: int
     model_id: str
@@ -204,7 +171,6 @@ class Model:
             for pi in self.provider_instances
             if pi.enabled or pi.should_retry()
         ]
-        # Re-enable if cooldown has passed
         for pi in available:
             if not pi.enabled and pi.should_retry():
                 pi.enabled = True

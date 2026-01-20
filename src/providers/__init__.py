@@ -1,4 +1,4 @@
-"""Providers package for LLM proxy."""
+"""Providers package."""
 
 from .base import Provider
 from .openai import OpenAIProvider
