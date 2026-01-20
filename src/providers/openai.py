@@ -1,105 +1,140 @@
 """OpenAI provider implementation."""
 
+import requests
 import uuid
 import time
-import requests
 from typing import Optional
+
 from .base import Provider
 
 
 class OpenAIProvider(Provider):
-    """OpenAI API provider implementation."""
+    """Provider for OpenAI's API."""
 
     def __init__(self, name: str, config: dict) -> None:
         """Initialize OpenAI provider.
         
         Args:
             name: Provider name
-            config: Must contain 'api_key', optionally 'base_url'
+            config: Configuration dictionary
         """
         super().__init__(name, config)
-        self.api_key = config.get("api_key")
         self.base_url = config.get("base_url", "https://api.openai.com/v1")
-        
-        if not self.api_key:
-            raise ValueError("OpenAI provider requires 'api_key' in config")
+        self.timeout = config.get("timeout", 60)
 
     def translate_request(
-        self, messages: list[dict], model_id: str, **kwargs
+        self, messages: list[dict], model_id: str, api_key: str, **kwargs
     ) -> dict:
-        """Convert to OpenAI format (already in OpenAI format, pass through).
+        """Convert OpenAI format to OpenAI format (pass-through with processing).
         
         Args:
             messages: List of message dicts
-            model_id: OpenAI model identifier
+            model_id: Model ID for OpenAI
+            api_key: The API key to use for this request
             **kwargs: temperature, max_tokens, top_p, stop, etc.
             
         Returns:
             Request dict for OpenAI API
         """
-        request_data = {
+        request = {
             "model": model_id,
             "messages": messages,
         }
-        
-        # Add optional parameters if provided
-        if "temperature" in kwargs:
-            request_data["temperature"] = kwargs["temperature"]
-        
-        # Handle both max_tokens and max_completion_tokens
-        if "max_completion_tokens" in kwargs:
-            request_data["max_completion_tokens"] = kwargs["max_completion_tokens"]
-        elif "max_tokens" in kwargs:
-            request_data["max_tokens"] = kwargs["max_tokens"]
-        
-        if "top_p" in kwargs:
-            request_data["top_p"] = kwargs["top_p"]
-        
-        if "stop" in kwargs:
-            request_data["stop"] = kwargs["stop"]
-        
-        return request_data
 
-    def make_request(self, request_data: dict) -> dict:
+        # Add optional parameters if provided
+        if "temperature" in kwargs and kwargs["temperature"] is not None:
+            request["temperature"] = kwargs["temperature"]
+
+        # Handle both max_tokens and max_completion_tokens
+        max_tokens = kwargs.get("max_tokens") or kwargs.get("max_completion_tokens")
+        if max_tokens is not None:
+            request["max_tokens"] = max_tokens
+
+        if "top_p" in kwargs and kwargs["top_p"] is not None:
+            request["top_p"] = kwargs["top_p"]
+
+        if "stop" in kwargs and kwargs["stop"] is not None:
+            request["stop"] = kwargs["stop"]
+
+        return request
+
+    def make_request(self, request_data: dict, api_key: str) -> dict:
         """Make request to OpenAI API.
         
         Args:
             request_data: Request dict from translate_request
+            api_key: The API key to use for this request
             
         Returns:
-            Raw JSON response from OpenAI
+            Raw JSON response
             
         Raises:
             Exception: On API error
         """
+        url = f"{self.base_url}/chat/completions"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
-        
-        url = f"{self.base_url}/chat/completions"
-        
-        response = requests.post(
-            url,
-            json=request_data,
-            headers=headers,
-            timeout=60,
-        )
-        
-        if response.status_code != 200:
-            raise Exception(
-                f"OpenAI API error {response.status_code}: {response.text}"
+
+        try:
+            response = requests.post(
+                url,
+                json=request_data,
+                headers=headers,
+                timeout=self.timeout
             )
-        
-        return response.json()
+
+            if response.status_code != 200:
+                error_msg = response.text
+                try:
+                    error_data = response.json()
+                    if "error" in error_data:
+                        error_msg = str(error_data["error"])
+                except:
+                    pass
+                
+                raise Exception(
+                    f"OpenAI API error {response.status_code}: {error_msg}"
+                )
+
+            return response.json()
+        except requests.exceptions.Timeout:
+            raise Exception(f"OpenAI API timeout after {self.timeout}s")
+        except requests.exceptions.ConnectionError as e:
+            raise Exception(f"OpenAI API connection error: {e}")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"OpenAI API request error: {e}")
 
     def translate_response(self, response_data: dict) -> dict:
-        """Convert OpenAI response to standard format (already in format, pass through).
+        """OpenAI response is already in the right format, return as-is.
         
         Args:
-            response_data: Raw response from OpenAI
+            response_data: Raw response from OpenAI API
+            
+        Returns:
+            Response in OpenAI format (pass-through)
+        """
+        # OpenAI responses are already in the right format
+        return response_data
+
+    def chat_completion(
+        self, messages: list[dict], model_id: str, api_key: str, **kwargs
+    ) -> dict:
+        """Main entry point for chat completion requests.
+        
+        Args:
+            messages: List of message dicts
+            model_id: Provider-specific model identifier
+            api_key: The API key to use for this request
+            **kwargs: Additional parameters (temperature, max_tokens, etc.)
             
         Returns:
             Response in OpenAI format
+            
+        Raises:
+            Exception: If any step fails
         """
-        return response_data
+        request_data = self.translate_request(messages, model_id, api_key, **kwargs)
+        response_data = self.make_request(request_data, api_key)
+        return self.translate_response(response_data)

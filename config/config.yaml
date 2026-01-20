@@ -1,43 +1,81 @@
-# OpenAI Proxy Configuration
+# LLM Provider Proxy Configuration
+# Supports multiple API keys per provider with round-robin rotation
 
 providers:
-  openai:
+  # Primary OpenAI provider with multiple API keys for load balancing
+  openai_primary:
+    type: openai
+    # Multiple API keys - will rotate through them with round-robin
+    api_keys:
+      - ${OPENAI_API_KEY_1}
+      - ${OPENAI_API_KEY_2}
+      - ${OPENAI_API_KEY_3}
+    base_url: https://api.openai.com/v1
+    timeout: 60
+
+  # Backup OpenAI provider with different API keys
+  openai_backup:
+    type: openai
+    api_keys:
+      - ${OPENAI_BACKUP_API_KEY_1}
+      - ${OPENAI_BACKUP_API_KEY_2}
+    base_url: https://api.openai.com/v1
+    timeout: 60
+
+  # Alternative: Single API key per provider (backward compatible)
+  openai_single:
     type: openai
     api_key: ${OPENAI_API_KEY}
-    base_url: https://api.openai.com/v1
-
-  openai-backup:
-    type: openai
-    api_key: ${OPENAI_BACKUP_API_KEY}
     base_url: https://api.openai.com/v1
 
 models:
   gpt-4:
     owned_by: openai
     providers:
-      openai:
+      # Primary provider with highest priority
+      # Will try all 3 API keys before moving to backup
+      openai_primary:
         priority: 0
         model_id: gpt-4
-      openai-backup:
+        # Max retries per provider instance
+        max_retries: 3
+        # Cooldown period for failed API keys (seconds)
+        cooldown_seconds: 600
+
+      # Backup provider with lower priority
+      # Used if primary provider exhausts all retries
+      openai_backup:
         priority: 1
         model_id: gpt-4
+        max_retries: 3
+        cooldown_seconds: 600
 
   gpt-4-turbo:
     owned_by: openai
     providers:
-      openai:
+      openai_primary:
         priority: 0
         model_id: gpt-4-turbo-preview
-      openai-backup:
+        max_retries: 3
+        cooldown_seconds: 600
+
+      openai_backup:
         priority: 1
         model_id: gpt-4-turbo-preview
+        max_retries: 3
+        cooldown_seconds: 600
 
   gpt-3.5-turbo:
     owned_by: openai
     providers:
-      openai:
+      openai_primary:
         priority: 0
         model_id: gpt-3.5-turbo
-      openai-backup:
+        max_retries: 3
+        cooldown_seconds: 600
+
+      openai_backup:
         priority: 1
         model_id: gpt-3.5-turbo
+        max_retries: 3
+        cooldown_seconds: 600

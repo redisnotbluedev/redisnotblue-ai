@@ -2,7 +2,7 @@
 
 import yaml
 from typing import Optional, Dict
-from models import Model, ProviderInstance, Message
+from models import Model, ProviderInstance, Message, ApiKeyRotation
 from providers.base import Provider
 from providers.openai import OpenAIProvider
 
@@ -101,13 +101,34 @@ class ModelRegistry:
                 priority = instance_config.get("priority", 0)
                 model_id_for_provider = instance_config.get(
                     "model_id", model_id
-                )  # Default to unified model_id
+                )
+
+                # Get API keys - can be a single key or list of keys
+                api_keys_config = instance_config.get("api_keys")
+                api_key_rotation = None
+                
+                if api_keys_config:
+                    # Multiple API keys provided
+                    if isinstance(api_keys_config, list):
+                        api_keys = api_keys_config
+                    else:
+                        api_keys = [api_keys_config]
+                    
+                    api_key_rotation = ApiKeyRotation(api_keys=api_keys)
+                
+                # Fallback to single api_key if provided (for backward compatibility)
+                elif "api_key" in instance_config:
+                    api_key = instance_config.get("api_key")
+                    if api_key:
+                        api_key_rotation = ApiKeyRotation(api_keys=[api_key])
 
                 pi = ProviderInstance(
                     provider=provider,
                     priority=priority,
                     model_id=model_id_for_provider,
+                    api_key_rotation=api_key_rotation,
                     enabled=True,
+                    max_retries=instance_config.get("max_retries", 3),
                 )
                 provider_instances.append(pi)
 
@@ -121,3 +142,35 @@ class ModelRegistry:
                 owned_by=model_config.get("owned_by", "system"),
             )
             self.register_model(model)
+
+    def get_provider_status(self) -> dict:
+        """Get status of all providers and their API keys.
+        
+        Returns:
+            Dictionary with provider and API key status
+        """
+        status = {}
+        
+        for model_id, model in self.models.items():
+            model_status = {}
+            
+            for pi in model.provider_instances:
+                provider_name = pi.provider.name
+                key = f"{provider_name}:{pi.model_id}"
+                
+                key_status = {
+                    "enabled": pi.enabled,
+                    "priority": pi.priority,
+                    "consecutive_failures": pi.consecutive_failures,
+                    "retry_count": pi.retry_count,
+                    "max_retries": pi.max_retries,
+                }
+                
+                if pi.api_key_rotation:
+                    key_status["api_key_status"] = pi.api_key_rotation.get_status()
+                
+                model_status[key] = key_status
+            
+            status[model_id] = model_status
+        
+        return status
