@@ -140,7 +140,7 @@ async def chat_completions(request: ChatCompletionRequest):
 				output_tokens = response.get("usage", {}).get("completion_tokens", 0)
 				total_tokens = input_tokens + output_tokens
 
-				# Record metrics
+				# Record metrics (multipliers handled in RateLimitTracker.add_request)
 				provider_instance.record_response(duration, total_tokens, api_key)
 				provider_instance.mark_api_key_success(api_key)
 				provider_instance.mark_success()

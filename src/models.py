@@ -22,15 +22,21 @@ class RateLimitTracker:
 	limits: dict = field(default_factory=dict)  # {"requests_per_minute": 3500, "tokens_per_hour": 90000, ...}
 	requests: List[float] = field(default_factory=list)
 	token_usage: List[tuple] = field(default_factory=list)
+	token_multiplier: float = 1.0  # How much each token counts (e.g., 2.0 = counts as 2x)
+	request_multiplier: float = 1.0  # How much each request counts (e.g., 2.0 = counts as 2x)
 
 	def add_request(self, tokens: int = 0) -> None:
-		"""Record a request."""
+		"""Record a request. Applies multipliers to token/request counting."""
 		current_time = time.time()
-		self.requests.append(current_time)
+		# Apply request multiplier
+		for _ in range(int(self.request_multiplier)):
+			self.requests.append(current_time)
 		if len(self.requests) > 1000:
 			self.requests.pop(0)
 		if tokens > 0:
-			self.token_usage.append((current_time, tokens))
+			# Apply token multiplier
+			counted_tokens = int(tokens * self.token_multiplier)
+			self.token_usage.append((current_time, counted_tokens))
 			if len(self.token_usage) > 1000:
 				self.token_usage.pop(0)
 
@@ -246,12 +252,13 @@ class ApiKeyRotation:
 	def set_rate_limits(self, limits: dict) -> None:
 		"""Set rate limits for all API keys."""
 		for key in self.api_keys:
-			# Only set limits if we own this tracker (not global)
-			if self.global_rate_limiters is None or key not in self.global_rate_limiters:
-				self.rate_limiters[key].limits = limits.copy()
-			else:
-				# For global trackers, still set limits (all instances should have same limits per key)
-				self.rate_limiters[key].limits = limits.copy()
+			self.rate_limiters[key].limits = limits.copy()
+
+	def set_multipliers(self, token_multiplier: float = 1.0, request_multiplier: float = 1.0) -> None:
+		"""Set token and request multipliers for all API keys."""
+		for key in self.api_keys:
+			self.rate_limiters[key].token_multiplier = token_multiplier
+			self.rate_limiters[key].request_multiplier = request_multiplier
 
 	def get_next_key(self) -> Optional[str]:
 		"""Get the next available API key using round-robin."""
@@ -369,7 +376,8 @@ class ProviderInstance:
 	"""Represents a provider instance for a specific model."""
 	provider: "Provider"
 	priority: int
-	model_id: str
+	model_id: str  # Primary model ID to use when calling the provider
+	model_aliases: List[str] = field(default_factory=list)  # Additional model IDs that map to this instance
 	api_key_rotation: Optional[ApiKeyRotation] = None
 	enabled: bool = True
 	consecutive_failures: int = 0

@@ -37,45 +37,63 @@ class ModelRegistry:
 		"""Get all registered models."""
 		return list(self.models.values())
 
-	def _apply_multiplier(self, limits: dict, multiplier: float) -> dict:
+	def _apply_multiplier(self, limits: dict, multiplier: float = 1.0, token_multiplier: float = 1.0, request_multiplier: float = 1.0) -> dict:
 		"""
-		Apply a multiplier to rate limits.
+		Apply multipliers to rate limits.
+		Multipliers represent how much each item counts (e.g., 2.0 = counts as 2x).
 		
 		Args:
 			limits: Dict of rate limits
-			multiplier: Multiplier to apply (e.g., 2.0 for double)
+			multiplier: General multiplier (applies to all limits)
+			token_multiplier: Token-specific multiplier (how much each token counts)
+			request_multiplier: Request-specific multiplier (how much each request counts)
 		
 		Returns:
-			New dict with multiplied limits
+			New dict with adjusted limits (divided by multiplier since items count for more)
 		"""
-		if not limits or multiplier <= 0:
+		if not limits:
 			return limits
 		
 		multiplied = {}
 		for key, value in limits.items():
-			if isinstance(value, (int, float)) and value > 0:
-				multiplied[key] = int(value * multiplier)
+			if not isinstance(value, (int, float)) or value <= 0:
+				multiplied[key] = value
+				continue
+			
+			# Determine which multiplier to apply
+			final_multiplier = multiplier
+			if key.startswith("tokens_per_"):
+				final_multiplier *= token_multiplier
+			elif key.startswith("requests_per_"):
+				final_multiplier *= request_multiplier
+			
+			# Divide limit by multiplier since items count for more
+			if final_multiplier > 0:
+				multiplied[key] = int(value / final_multiplier)
 			else:
 				multiplied[key] = value
+		
 		return multiplied
 
-	def _merge_limits(self, defaults: dict, overrides: dict, multiplier: float = 1.0) -> dict:
+	def _merge_limits(self, defaults: dict, overrides: dict, multiplier: float = 1.0, token_multiplier: float = 1.0, request_multiplier: float = 1.0) -> dict:
 		"""
 		Merge default limits with instance-specific overrides.
-		Apply multiplier if specified.
+		Apply multipliers if specified.
 		
 		Priority:
 		1. Instance-specific rate_limits (highest priority)
 		2. Default rate_limits from provider (if no instance override)
-		3. Multiplier applied to final result (if specified)
+		3. Multipliers applied to final result (if specified)
 		
 		Args:
 			defaults: Default limits from provider config
 			overrides: Instance-specific limits override
-			multiplier: Optional multiplier to apply to final limits
+			multiplier: Optional general multiplier (how much each item counts)
+			token_multiplier: Optional multiplier for tokens (how much each token counts)
+			request_multiplier: Optional multiplier for requests (how much each request counts)
 		
 		Returns:
-			Merged and optionally multiplied limits
+			Merged and adjusted limits based on multipliers
 		"""
 		# Start with provider defaults
 		merged = dict(defaults) if defaults else {}
@@ -84,9 +102,9 @@ class ModelRegistry:
 		if overrides:
 			merged.update(overrides)
 		
-		# Apply multiplier if specified
-		if multiplier != 1.0:
-			merged = self._apply_multiplier(merged, multiplier)
+		# Apply multipliers if specified
+		if multiplier != 1.0 or token_multiplier != 1.0 or request_multiplier != 1.0:
+			merged = self._apply_multiplier(merged, multiplier, token_multiplier, request_multiplier)
 		
 		return merged
 
@@ -106,7 +124,7 @@ class ModelRegistry:
 		limits = {}
 		if rate_limit_config:
 			for key, value in rate_limit_config.items():
-				if key != "multiplier" and value is not None and value > 0:
+				if value is not None and value > 0:
 					limits[key] = value
 		return limits
 
@@ -152,15 +170,26 @@ class ModelRegistry:
 
 				provider = self.providers[provider_name]
 				priority = instance_config.get("priority", 0)
-				model_id_for_provider = instance_config.get("model_id", model_id)
+				
+				# Support both single model_id and list of model_ids (aliases)
+				model_id_config = instance_config.get("model_id", model_id)
+				if isinstance(model_id_config, list):
+					model_id_for_provider = model_id_config[0]  # Primary ID
+					model_aliases = model_id_config[1:]  # Additional aliases
+				else:
+					model_id_for_provider = model_id_config
+					model_aliases = []
 
 				# Get rate limits with defaults and multiplier support
 				provider_defaults = self.provider_defaults.get(provider_name, {})
 				instance_limits = self._build_rate_limits(instance_config.get("rate_limits", {}))
-				multiplier = instance_config.get("rate_limits", {}).get("multiplier", 1.0) if isinstance(instance_config.get("rate_limits"), dict) else 1.0
+				# Multipliers are at instance level
+				multiplier = instance_config.get("multiplier", 1.0)
+				token_multiplier = instance_config.get("token_multiplier", 1.0)
+				request_multiplier = instance_config.get("request_multiplier", 1.0)
 				
-				# Merge: provider defaults + instance overrides + multiplier
-				rate_limits = self._merge_limits(provider_defaults, instance_limits, multiplier)
+				# Merge: provider defaults + instance overrides + multipliers (for limits)
+				rate_limits = self._merge_limits(provider_defaults, instance_limits, multiplier, token_multiplier, request_multiplier)
 
 				api_keys_config = instance_config.get("api_keys")
 				api_key_rotation = None
@@ -179,6 +208,10 @@ class ModelRegistry:
 					# Set rate limits (with defaults and multiplier applied)
 					if rate_limits:
 						api_key_rotation.set_rate_limits(rate_limits)
+					
+					# Set usage multipliers (how much each token/request counts)
+					if token_multiplier != 1.0 or request_multiplier != 1.0:
+						api_key_rotation.set_multipliers(token_multiplier, request_multiplier)
 				elif "api_key" in instance_config:
 					api_key = instance_config.get("api_key")
 					if api_key:
@@ -188,11 +221,16 @@ class ModelRegistry:
 						api_key_rotation = ApiKeyRotation(api_keys=[api_key], global_rate_limiters=self.global_key_trackers)
 						if rate_limits:
 							api_key_rotation.set_rate_limits(rate_limits)
+						
+						# Set usage multipliers (how much each token/request counts)
+						if token_multiplier != 1.0 or request_multiplier != 1.0:
+							api_key_rotation.set_multipliers(token_multiplier, request_multiplier)
 
 				pi = ProviderInstance(
 					provider=provider,
 					priority=priority,
 					model_id=model_id_for_provider,
+					model_aliases=model_aliases,
 					api_key_rotation=api_key_rotation,
 					enabled=True,
 					max_retries=instance_config.get("max_retries", 3),
@@ -208,3 +246,15 @@ class ModelRegistry:
 				owned_by=model_config.get("owned_by", "system"),
 			)
 			self.register_model(model)
+		
+			# Register aliases - they point to the same model
+			for pi in provider_instances:
+				for alias in pi.model_aliases:
+					if alias not in self.models:
+						alias_model = Model(
+							id=alias,
+							provider_instances=provider_instances,
+							created=model_config.get("created", 1234567890),
+							owned_by=model_config.get("owned_by", "system"),
+						)
+						self.register_model(alias_model)
