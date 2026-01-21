@@ -241,16 +241,7 @@ class Provider(ABC):
 			}
 		)
 
-		# Step 6: Add comprehensive metadata
 		response = transformed_response.data
-		response["_metadata"] = {
-			"provider": {
-				"name": self.name,
-				"config": self.config,
-			},
-			"request": transformed_response.original_request,
-		}
-
 		return response
 
 

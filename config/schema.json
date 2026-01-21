@@ -69,7 +69,7 @@
 							"properties": {
 								"priority": {
 									"type": "integer",
-									"minimum": 0,
+									"minimum": -9999,
 									"default": 0,
 									"description": "Lower value = higher priority. Used for load balancing."
 								},

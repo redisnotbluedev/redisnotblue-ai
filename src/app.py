@@ -79,6 +79,7 @@ class ChatCompletionResponse(BaseModel):
 	model: str
 	choices: list[Choice]
 	usage: Usage
+	provider: Optional[str] = None
 
 
 class ModelInfo(BaseModel):
@@ -96,7 +97,7 @@ class ModelListResponse(BaseModel):
 app = FastAPI(title="OpenAI Proxy", lifespan=lifespan)
 
 
-@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+@app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
 	if registry is None:
 		raise HTTPException(status_code=500, detail="Registry not initialized")
@@ -127,7 +128,8 @@ async def chat_completions(request: ChatCompletionRequest):
 	last_error = None
 	validation_errors = None
 
-	for provider_instance in available_providers:
+	# Limit to 2 providers before failing
+	for provider_instance in available_providers[:2]:
 		provider_instance.reset_retry_count()
 
 		while provider_instance.should_retry_request():
@@ -172,10 +174,9 @@ async def chat_completions(request: ChatCompletionRequest):
 					response["created"] = int(time.time())
 
 				# Clean up internal metadata fields before returning
-				# These are useful for debugging but shouldn't be in the final response
 				response.pop("_metadata", None)
 
-				return ChatCompletionResponse(**response)
+				return response
 
 			except ValueError as e:
 				# Validation error - save it and continue to next provider
