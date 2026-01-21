@@ -42,6 +42,8 @@ class GitHubCopilotProvider(OpenAIProvider):
 			data = response.json()
 			self.expires_at = data.get("expires_at", -1)
 			self.copilot_key = data.get("token", None)
+			if data.get("sku", "individual") != "individual":
+				self.base_url = f"https://api.{data.get("sku")}.githubcopilot.com"
 			return data.get("token", None)
 
 		except requests.exceptions.Timeout:

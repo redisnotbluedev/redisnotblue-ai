@@ -2,6 +2,7 @@
 
 import yaml
 from typing import Optional, Dict
+from .providers.github_copilot import GitHubCopilotProvider
 from .models import Model, ProviderInstance, ApiKeyRotation, RateLimitTracker
 from .providers.base import Provider
 from .providers.openai import OpenAIProvider
@@ -10,6 +11,7 @@ from .metrics import MetricsPersistence
 
 PROVIDER_CLASSES = {
 	"openai": OpenAIProvider,
+	"copilot": GitHubCopilotProvider
 }
 
 

@@ -12,7 +12,7 @@
 			"additionalProperties": {
 				"type": "object",
 				"description": "Provider configuration",
-				"required": ["type", "base_url", "api_keys"],
+				"required": ["type", "api_keys"],
 				"additionalProperties": false,
 				"properties": {
 					"type": {
