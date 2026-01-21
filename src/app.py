@@ -1,16 +1,42 @@
 """FastAPI application for the OpenAI-compatible proxy server."""
 
 import asyncio
+import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Union
+from dotenv import load_dotenv
 
-from registry import ModelRegistry
-from models import Message
+from .registry import ModelRegistry
+from .models import Message
+
+load_dotenv()
 
 registry: Optional[ModelRegistry] = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+	"""Manage application lifespan events."""
+	global registry
+	try:
+		# Startup
+		registry = ModelRegistry()
+		config_path = os.getenv("CONFIG_PATH", "config/config.yaml")
+		print(f"Loading config from: {config_path}")
+		registry.load_from_config(config_path)
+		print("Registry initialized successfully")
+	except Exception as e:
+		print(f"Error initializing registry: {e}")
+		import traceback
+		traceback.print_exc()
+		raise
+	yield
+	# Shutdown
+	pass
 
 
 class ChatMessage(BaseModel):
@@ -67,14 +93,7 @@ class ModelListResponse(BaseModel):
 	data: list[ModelInfo]
 
 
-app = FastAPI(title="OpenAI Proxy")
-
-
-@app.on_event("startup")
-async def startup_event():
-	global registry
-	registry = ModelRegistry()
-	registry.load_from_config("config/config.yaml")
+app = FastAPI(title="OpenAI Proxy", lifespan=lifespan)
 
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
@@ -106,6 +125,7 @@ async def chat_completions(request: ChatCompletionRequest):
 		raise HTTPException(status_code=503, detail="No available providers for this model")
 
 	last_error = None
+	validation_errors = None
 
 	for provider_instance in available_providers:
 		provider_instance.reset_retry_count()
@@ -151,7 +171,19 @@ async def chat_completions(request: ChatCompletionRequest):
 				if "created" not in response:
 					response["created"] = int(time.time())
 
+				# Clean up internal metadata fields before returning
+				# These are useful for debugging but shouldn't be in the final response
+				response.pop("_routing", None)
+				response.pop("_request_data", None)
+
 				return ChatCompletionResponse(**response)
+
+			except ValueError as e:
+				# Validation error - save it and continue to next provider
+				validation_errors = str(e)
+				last_error = validation_errors
+				provider_instance.mark_failure()
+				provider_instance.increment_retry_count()
 
 			except Exception as e:
 				last_error = str(e)
@@ -165,6 +197,11 @@ async def chat_completions(request: ChatCompletionRequest):
 				if not provider_instance.should_retry_request():
 					break
 
+	# Determine which error to return
+	if validation_errors:
+		error_detail = f"Request validation failed: {validation_errors}"
+		raise HTTPException(status_code=400, detail=error_detail)
+	
 	error_detail = (
 		f"All providers failed. Last error: {last_error}"
 		if last_error
@@ -209,4 +246,36 @@ async def provider_stats():
 
 @app.get("/health")
 async def health_check():
-	return {"status": "ok"}
+	if registry is None:
+		return {
+			"status": "error",
+			"detail": "Registry not initialized"
+		}
+	
+	models = registry.list_models()
+	providers_info = []
+	
+	for model in models:
+		model_info = {
+			"model_id": model.id,
+			"providers": []
+		}
+		for pi in model.provider_instances:
+			provider_info = {
+				"name": pi.provider.name,
+				"model_id": pi.model_id,
+				"enabled": pi.enabled,
+				"has_api_keys": pi.api_key_rotation is not None and len(pi.api_key_rotation.api_keys) > 0 if pi.api_key_rotation else False
+			}
+			if pi.api_key_rotation:
+				provider_info["api_key_count"] = len(pi.api_key_rotation.api_keys)
+			model_info["providers"].append(provider_info)
+		providers_info.append(model_info)
+	
+	return {
+		"status": "ok",
+		"registry_initialized": True,
+		"total_models": len(models),
+		"total_providers": sum(len(m["providers"]) for m in providers_info),
+		"models": providers_info
+	}

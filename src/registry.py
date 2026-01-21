@@ -2,9 +2,9 @@
 
 import yaml
 from typing import Optional, Dict
-from models import Model, ProviderInstance, ApiKeyRotation
-from providers.base import Provider
-from providers.openai import OpenAIProvider
+from .models import Model, ProviderInstance, ApiKeyRotation
+from .providers.base import Provider
+from .providers.openai import OpenAIProvider
 
 
 PROVIDER_CLASSES = {
@@ -19,6 +19,7 @@ class ModelRegistry:
 		self.models: Dict[str, Model] = {}
 		self.providers: Dict[str, Provider] = {}
 		self.provider_defaults: Dict[str, dict] = {}  # Provider-level default rate limits
+		self.provider_api_keys: Dict[str, list] = {}  # Provider-level default API keys
 		self.global_key_trackers: Dict[str, "RateLimitTracker"] = {}  # Global per-key rate limit trackers
 
 	def register_provider(self, name: str, provider: Provider) -> None:
@@ -130,7 +131,7 @@ class ModelRegistry:
 
 	def _ensure_global_trackers(self, api_keys: list) -> None:
 		"""Create global rate limit trackers for API keys if they don't exist."""
-		from models import RateLimitTracker
+		from .models import RateLimitTracker
 		for key in api_keys:
 			if key not in self.global_key_trackers:
 				self.global_key_trackers[key] = RateLimitTracker()
@@ -143,7 +144,7 @@ class ModelRegistry:
 		if not config:
 			raise ValueError("Config file is empty")
 
-		# Load providers and store their default rate limits
+		# Load providers and store their default rate limits and API keys
 		providers_config = config.get("providers", {})
 		for provider_name, provider_config in providers_config.items():
 			provider_type = provider_config.get("type")
@@ -159,6 +160,14 @@ class ModelRegistry:
 			provider_defaults = provider_config.get("rate_limits")
 			if provider_defaults:
 				self.provider_defaults[provider_name] = self._build_rate_limits(provider_defaults)
+			
+			# Store provider-level default API keys
+			provider_api_keys = provider_config.get("api_keys")
+			if provider_api_keys:
+				if isinstance(provider_api_keys, list):
+					self.provider_api_keys[provider_name] = provider_api_keys
+				else:
+					self.provider_api_keys[provider_name] = [provider_api_keys]
 
 		models_config = config.get("models", {})
 		for model_id, model_config in models_config.items():
@@ -191,7 +200,12 @@ class ModelRegistry:
 				# Merge: provider defaults + instance overrides + multipliers (for limits)
 				rate_limits = self._merge_limits(provider_defaults, instance_limits, multiplier, token_multiplier, request_multiplier)
 
+				# Get API keys: instance config overrides provider defaults
 				api_keys_config = instance_config.get("api_keys")
+				if not api_keys_config:
+					# Fall back to provider-level API keys
+					api_keys_config = self.provider_api_keys.get(provider_name)
+				
 				api_key_rotation = None
 
 				if api_keys_config:
