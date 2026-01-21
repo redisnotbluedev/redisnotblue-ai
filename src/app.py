@@ -1,10 +1,11 @@
 """FastAPI application for the OpenAI-compatible proxy server."""
 
+import asyncio
+import time
+import uuid
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Union
-import uuid
-import time
 
 from registry import ModelRegistry
 from models import Message
@@ -117,6 +118,14 @@ async def chat_completions(request: ChatCompletionRequest):
 					last_error = "No API keys available"
 					break
 
+				# Apply exponential backoff before retry
+				if provider_instance.retry_count > 0:
+					delay = provider_instance.get_backoff_delay()
+					await asyncio.sleep(delay)
+
+				# Make request and time it
+				start_time = time.time()
+
 				response = provider_instance.provider.chat_completion(
 					messages=messages,
 					model_id=provider_instance.model_id,
@@ -124,9 +133,19 @@ async def chat_completions(request: ChatCompletionRequest):
 					**kwargs,
 				)
 
+				duration = time.time() - start_time
+
+				# Extract token counts
+				input_tokens = response.get("usage", {}).get("prompt_tokens", 0)
+				output_tokens = response.get("usage", {}).get("completion_tokens", 0)
+				total_tokens = input_tokens + output_tokens
+
+				# Record metrics
+				provider_instance.record_response(duration, total_tokens, api_key)
 				provider_instance.mark_api_key_success(api_key)
 				provider_instance.mark_success()
 
+				# Ensure response has required fields
 				if "id" not in response:
 					response["id"] = f"chatcmpl-{uuid.uuid4().hex[:24]}"
 				if "created" not in response:
@@ -140,12 +159,11 @@ async def chat_completions(request: ChatCompletionRequest):
 				if api_key:
 					provider_instance.mark_api_key_failure(api_key)
 
+				provider_instance.mark_failure()
 				provider_instance.increment_retry_count()
 
 				if not provider_instance.should_retry_request():
 					break
-
-		provider_instance.mark_failure()
 
 	error_detail = (
 		f"All providers failed. Last error: {last_error}"
@@ -163,6 +181,30 @@ async def list_models():
 	models = registry.list_models()
 	model_data = [ModelInfo(**model.to_dict()) for model in models]
 	return ModelListResponse(object="list", data=model_data)
+
+
+@app.get("/v1/providers/stats")
+async def provider_stats():
+	"""Get detailed statistics about provider performance."""
+	if registry is None:
+		raise HTTPException(status_code=500, detail="Registry not initialized")
+
+	stats = {}
+	for model in registry.list_models():
+		model_stats = {
+			"model_id": model.id,
+			"providers": []
+		}
+
+		for pi in model.provider_instances:
+			provider_stat = pi.get_stats()
+			if pi.api_key_rotation:
+				provider_stat["api_keys"] = pi.api_key_rotation.get_status()
+			model_stats["providers"].append(provider_stat)
+
+		stats[model.id] = model_stats
+
+	return stats
 
 
 @app.get("/health")

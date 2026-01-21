@@ -18,6 +18,8 @@ class ModelRegistry:
 	def __init__(self):
 		self.models: Dict[str, Model] = {}
 		self.providers: Dict[str, Provider] = {}
+		self.provider_defaults: Dict[str, dict] = {}  # Provider-level default rate limits
+		self.global_key_trackers: Dict[str, "RateLimitTracker"] = {}  # Global per-key rate limit trackers
 
 	def register_provider(self, name: str, provider: Provider) -> None:
 		"""Register a provider instance."""
@@ -35,6 +37,86 @@ class ModelRegistry:
 		"""Get all registered models."""
 		return list(self.models.values())
 
+	def _apply_multiplier(self, limits: dict, multiplier: float) -> dict:
+		"""
+		Apply a multiplier to rate limits.
+		
+		Args:
+			limits: Dict of rate limits
+			multiplier: Multiplier to apply (e.g., 2.0 for double)
+		
+		Returns:
+			New dict with multiplied limits
+		"""
+		if not limits or multiplier <= 0:
+			return limits
+		
+		multiplied = {}
+		for key, value in limits.items():
+			if isinstance(value, (int, float)) and value > 0:
+				multiplied[key] = int(value * multiplier)
+			else:
+				multiplied[key] = value
+		return multiplied
+
+	def _merge_limits(self, defaults: dict, overrides: dict, multiplier: float = 1.0) -> dict:
+		"""
+		Merge default limits with instance-specific overrides.
+		Apply multiplier if specified.
+		
+		Priority:
+		1. Instance-specific rate_limits (highest priority)
+		2. Default rate_limits from provider (if no instance override)
+		3. Multiplier applied to final result (if specified)
+		
+		Args:
+			defaults: Default limits from provider config
+			overrides: Instance-specific limits override
+			multiplier: Optional multiplier to apply to final limits
+		
+		Returns:
+			Merged and optionally multiplied limits
+		"""
+		# Start with provider defaults
+		merged = dict(defaults) if defaults else {}
+		
+		# Override with instance-specific limits
+		if overrides:
+			merged.update(overrides)
+		
+		# Apply multiplier if specified
+		if multiplier != 1.0:
+			merged = self._apply_multiplier(merged, multiplier)
+		
+		return merged
+
+	def _build_rate_limits(self, rate_limit_config: dict) -> dict:
+		"""
+		Convert rate limit config to limits dict format.
+		
+		Accepts config like:
+		{
+			"requests_per_minute": 3500,
+			"tokens_per_day": 90000,
+			"requests_per_hour": 100000,
+		}
+		
+		Returns a dict with the same keys that can be checked by RateLimitTracker.
+		"""
+		limits = {}
+		if rate_limit_config:
+			for key, value in rate_limit_config.items():
+				if key != "multiplier" and value is not None and value > 0:
+					limits[key] = value
+		return limits
+
+	def _ensure_global_trackers(self, api_keys: list) -> None:
+		"""Create global rate limit trackers for API keys if they don't exist."""
+		from models import RateLimitTracker
+		for key in api_keys:
+			if key not in self.global_key_trackers:
+				self.global_key_trackers[key] = RateLimitTracker()
+
 	def load_from_config(self, path: str) -> None:
 		"""Load providers and models from YAML configuration."""
 		with open(path, "r") as f:
@@ -43,6 +125,7 @@ class ModelRegistry:
 		if not config:
 			raise ValueError("Config file is empty")
 
+		# Load providers and store their default rate limits
 		providers_config = config.get("providers", {})
 		for provider_name, provider_config in providers_config.items():
 			provider_type = provider_config.get("type")
@@ -53,6 +136,11 @@ class ModelRegistry:
 			provider_class = PROVIDER_CLASSES[provider_type]
 			provider = provider_class(provider_name, provider_config)
 			self.register_provider(provider_name, provider)
+			
+			# Store provider-level default rate limits
+			provider_defaults = provider_config.get("rate_limits")
+			if provider_defaults:
+				self.provider_defaults[provider_name] = self._build_rate_limits(provider_defaults)
 
 		models_config = config.get("models", {})
 		for model_id, model_config in models_config.items():
@@ -66,6 +154,14 @@ class ModelRegistry:
 				priority = instance_config.get("priority", 0)
 				model_id_for_provider = instance_config.get("model_id", model_id)
 
+				# Get rate limits with defaults and multiplier support
+				provider_defaults = self.provider_defaults.get(provider_name, {})
+				instance_limits = self._build_rate_limits(instance_config.get("rate_limits", {}))
+				multiplier = instance_config.get("rate_limits", {}).get("multiplier", 1.0) if isinstance(instance_config.get("rate_limits"), dict) else 1.0
+				
+				# Merge: provider defaults + instance overrides + multiplier
+				rate_limits = self._merge_limits(provider_defaults, instance_limits, multiplier)
+
 				api_keys_config = instance_config.get("api_keys")
 				api_key_rotation = None
 
@@ -74,11 +170,24 @@ class ModelRegistry:
 						api_keys = api_keys_config
 					else:
 						api_keys = [api_keys_config]
-					api_key_rotation = ApiKeyRotation(api_keys=api_keys)
+					
+					# Ensure global trackers exist for all keys
+					self._ensure_global_trackers(api_keys)
+					
+					api_key_rotation = ApiKeyRotation(api_keys=api_keys, global_rate_limiters=self.global_key_trackers)
+					
+					# Set rate limits (with defaults and multiplier applied)
+					if rate_limits:
+						api_key_rotation.set_rate_limits(rate_limits)
 				elif "api_key" in instance_config:
 					api_key = instance_config.get("api_key")
 					if api_key:
-						api_key_rotation = ApiKeyRotation(api_keys=[api_key])
+						# Ensure global tracker exists for this key
+						self._ensure_global_trackers([api_key])
+						
+						api_key_rotation = ApiKeyRotation(api_keys=[api_key], global_rate_limiters=self.global_key_trackers)
+						if rate_limits:
+							api_key_rotation.set_rate_limits(rate_limits)
 
 				pi = ProviderInstance(
 					provider=provider,
