@@ -81,7 +81,7 @@
 										},
 										{
 											"type": "array",
-											"description": "List of model IDs (primary + aliases). First is primary, rest are aliases.",
+											"description": "List of model IDs to round-robin through when calling this provider",
 											"minItems": 1,
 											"items": { "type": "string" }
 										}
