@@ -148,7 +148,7 @@ async def chat_completions(request: ChatCompletionRequest):
 
 				response = provider_instance.provider.chat_completion(
 					messages=messages,
-					model_id=provider_instance.model_id,
+					model_id=provider_instance.get_next_model_id(),
 					api_key=api_key,
 					**kwargs,
 				)
@@ -263,7 +263,7 @@ async def health_check():
 		for pi in model.provider_instances:
 			provider_info = {
 				"name": pi.provider.name,
-				"model_id": pi.model_id,
+				"model_ids": pi.model_ids,
 				"enabled": pi.enabled,
 				"has_api_keys": pi.api_key_rotation is not None and len(pi.api_key_rotation.api_keys) > 0 if pi.api_key_rotation else False
 			}

@@ -2,7 +2,7 @@
 
 import yaml
 from typing import Optional, Dict
-from .models import Model, ProviderInstance, ApiKeyRotation
+from .models import Model, ProviderInstance, ApiKeyRotation, RateLimitTracker
 from .providers.base import Provider
 from .providers.openai import OpenAIProvider
 
@@ -180,14 +180,12 @@ class ModelRegistry:
 				provider = self.providers[provider_name]
 				priority = instance_config.get("priority", 0)
 				
-				# Support both single model_id and list of model_ids (aliases)
+				# Support both single model_id and list of model_ids (for round-robin)
 				model_id_config = instance_config.get("model_id", model_id)
 				if isinstance(model_id_config, list):
-					model_id_for_provider = model_id_config[0]  # Primary ID
-					model_aliases = model_id_config[1:]  # Additional aliases
+					model_ids_for_provider = model_id_config
 				else:
-					model_id_for_provider = model_id_config
-					model_aliases = []
+					model_ids_for_provider = [model_id_config]
 
 				# Get rate limits with defaults and multiplier support
 				provider_defaults = self.provider_defaults.get(provider_name, {})
@@ -243,8 +241,7 @@ class ModelRegistry:
 				pi = ProviderInstance(
 					provider=provider,
 					priority=priority,
-					model_id=model_id_for_provider,
-					model_aliases=model_aliases,
+					model_ids=model_ids_for_provider,
 					api_key_rotation=api_key_rotation,
 					enabled=True,
 					max_retries=instance_config.get("max_retries", 3),
@@ -260,15 +257,3 @@ class ModelRegistry:
 				owned_by=model_config.get("owned_by", "system"),
 			)
 			self.register_model(model)
-		
-			# Register aliases - they point to the same model
-			for pi in provider_instances:
-				for alias in pi.model_aliases:
-					if alias not in self.models:
-						alias_model = Model(
-							id=alias,
-							provider_instances=provider_instances,
-							created=model_config.get("created", 1234567890),
-							owned_by=model_config.get("owned_by", "system"),
-						)
-						self.register_model(alias_model)

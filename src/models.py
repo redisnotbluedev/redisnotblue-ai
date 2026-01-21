@@ -376,8 +376,7 @@ class ProviderInstance:
 	"""Represents a provider instance for a specific model."""
 	provider: "Provider"
 	priority: int
-	model_id: str  # Primary model ID to use when calling the provider
-	model_aliases: List[str] = field(default_factory=list)  # Additional model IDs that map to this instance
+	model_ids: List[str]  # Model IDs to round-robin through when calling the provider
 	api_key_rotation: Optional[ApiKeyRotation] = None
 	enabled: bool = True
 	consecutive_failures: int = 0
@@ -387,6 +386,7 @@ class ProviderInstance:
 	circuit_breaker: CircuitBreaker = field(default_factory=CircuitBreaker)
 	backoff: ExponentialBackoff = field(default_factory=ExponentialBackoff)
 	speed_tracker: SpeedTracker = field(default_factory=SpeedTracker)
+	_model_id_index: int = field(default=0, init=False, repr=False)  # Tracks current position in model_ids rotation
 
 	def mark_failure(self) -> None:
 		"""Mark a failure and potentially disable the provider."""
@@ -451,6 +451,12 @@ class ProviderInstance:
 		if self.api_key_rotation:
 			self.api_key_rotation.record_usage(api_key, tokens)
 
+	def get_next_model_id(self) -> str:
+		"""Get the next model ID in round-robin rotation."""
+		current = self.model_ids[self._model_id_index]
+		self._model_id_index = (self._model_id_index + 1) % len(self.model_ids)
+		return current
+
 	def get_health_score(self) -> float:
 		"""
 		Calculate provider health score (0-100).
@@ -480,7 +486,7 @@ class ProviderInstance:
 		return {
 			"enabled": self.enabled,
 			"priority": self.priority,
-			"model_id": self.model_id,
+			"model_ids": self.model_ids,
 			"consecutive_failures": self.consecutive_failures,
 			"circuit_breaker": self.circuit_breaker.state,
 			"health_score": self.get_health_score(),
