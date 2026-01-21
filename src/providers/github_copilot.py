@@ -17,7 +17,7 @@ class GitHubCopilotProvider(OpenAIProvider):
 
 		try:
 			response = requests.get(f"{self.base_renew_url}/copilot_internal/v2/token", headers={
-				"Authorization": f"Bearer {api_key}",
+				"Authorization": f"token {api_key}",
 				"Content-Type": "application/json",
 				"Accept": "application/json",
 				"User-Agent": "GitHubCopilotChat/0.26.7",
@@ -36,13 +36,13 @@ class GitHubCopilotProvider(OpenAIProvider):
 					pass
 
 				raise Exception(
-					f"OpenAI API error {response.status_code}: {error_msg}"
+					f"GitHub API error when requesting token renewal {response.status_code}: {error_msg}"
 				)
 
 			data = response.json()
 			self.expires_at = data.get("expires_at", -1)
 			self.copilot_key = data.get("token", None)
-			if data.get("sku", "individual") != "individual":
+			if data.get("sku", "individual") not in ["individual", "free_educational_quota"]:
 				self.base_url = f"https://api.{data.get("sku")}.githubcopilot.com"
 			return data.get("token", None)
 
