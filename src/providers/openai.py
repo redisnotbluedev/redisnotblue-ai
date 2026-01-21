@@ -24,14 +24,9 @@ class OpenAIProvider(Provider):
 		}
 
 		# Add optional parameters if provided
-		for key in ["temperature", "top_p", "stop"]:
+		for key in ["temperature", "top_p", "stop", "max_tokens"]:
 			if key in kwargs and kwargs[key] is not None:
 				request[key] = kwargs[key]
-
-		# Handle max_tokens (supports both max_tokens and max_completion_tokens)
-		max_tokens = kwargs.get("max_tokens") or kwargs.get("max_completion_tokens")
-		if max_tokens is not None:
-			request["max_tokens"] = max_tokens
 
 		return TransformedRequest(
 			data=request,

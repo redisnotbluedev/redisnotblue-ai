@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Union
 from dotenv import load_dotenv
+import signal
 
 from .registry import ModelRegistry
 from .models import Message
@@ -35,8 +36,10 @@ async def lifespan(app: FastAPI):
 		traceback.print_exc()
 		raise
 	yield
-	# Shutdown
-	pass
+	# Shutdown - save metrics to disk
+	if registry:
+		registry.save_metrics()
+		print("Metrics saved")
 
 
 class ChatMessage(BaseModel):

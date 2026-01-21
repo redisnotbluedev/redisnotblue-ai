@@ -36,7 +36,7 @@ models:
     owned_by: openai                       # Optional: owner name
     providers:
       my_provider:
-        priority: 0                        # Optional: lower = higher priority, default 0
+        priority: 0                        # Optional: lower value = higher priority (boosts score), default 0
         model_id: gpt-4                    # Required: model name sent to provider
         api_keys:                          # Optional: override provider's keys
           - sk-proj-override-key
@@ -71,7 +71,9 @@ models:
 
 **Model-Provider Instance:**
 - `priority` (optional): Load balancing priority, default 0 (lower = higher)
-- `model_id` (required): Model name sent to provider; can be string or array (primary ID + aliases)
+- `model_id` (required): Model name(s) sent to provider
+  - String: Single model ID (e.g., `gpt-4`)
+  - Array: Multiple model IDs for round-robin (e.g., `[gpt-4, gpt-4-turbo]`)
 - `api_keys` (optional): Override provider's API keys
 - `api_key` (optional): Single API key override
 - `rate_limits` (optional): Override provider's rate limits
@@ -129,69 +131,119 @@ rate_limits:
 - Total capacity: 200k tokens/day across both keys
 - If key-1 exhausted, proxy rotates to key-2
 
-## Model Aliases
+## Model ID Round-Robin
 
-Single provider instance with multiple model names (aliases):
+When a provider has multiple model IDs configured, requests rotate through them:
 
 ```yaml
 models:
-  gpt-3.5-turbo:
+  claude:
     providers:
       my_provider:
         model_id:
-          - gpt-3.5-turbo        # Primary ID
-          - gpt-3.5-turbo-16k    # Alias
-          - gpt-3.5              # Alias
+          - claude-3-opus    # First request uses this
+          - claude-3-sonnet  # Second request uses this
+          - claude-3-opus    # Third request cycles back
 ```
 
-All aliases share the same provider instance, rate limits, and API keys.
+- All model IDs share the same rate limits and API keys
+- Only one model name appears in `/v1/models` (the config key, e.g., `claude`)
+- Each request automatically rotates to the next model ID in the list
+
+## Provider Failover
+
+When a request fails, the proxy attempts the next available provider:
+
+- **Max attempts**: 2 providers per request
+- **Retry logic**: Each provider gets `max_retries` attempts before moving to the next
+- **Error response**: If all attempts fail, returns 503 with error detail
+
+Example with 3 providers configured:
+```yaml
+models:
+  gpt-4:
+    providers:
+      provider_a:
+        priority: 0
+      provider_b:
+        priority: 1
+      provider_c:
+        priority: 2
+```
+Request tries `provider_a` (priority 0), then `provider_b` (priority 1). If both fail, returns error without trying `provider_c`.
 
 ## API Endpoints
 
 - `POST /v1/chat/completions` - Chat completion (OpenAI compatible)
+  - Returns JSON with `provider` field indicating which provider handled the request
 - `GET /v1/models` - List available models
 - `GET /v1/providers/stats` - Rate limit usage statistics
 - `GET /health` - Health check
 
-## IntelliSense Setup
+## Response Format
 
-The config file includes `# yaml-language-server: $schema=./schema.json` at the top, which enables IntelliSense in editors that support yaml-language-server.
+All responses are standard OpenAI format with an additional `provider` field:
 
-### Zed
-
-Install yaml-language-server:
-```bash
-npm install -g yaml-language-server
-```
-
-Create or edit `.zed/settings.json`:
 ```json
 {
-  "languages": {
-    "YAML": {
-      "language_servers": ["yaml-language-server"]
-    }
-  }
+  "id": "chatcmpl-...",
+  "object": "chat.completion",
+  "created": 1700000000,
+  "model": "gpt-4",
+  "provider": "my_provider",
+  "choices": [...],
+  "usage": {...}
 }
 ```
 
-### VS Code
+The `provider` field contains the provider instance name from config (e.g., `openai`, `anthropic`, `xai`).
 
-Install "YAML" extension by Red Hat. Schema is auto-detected.
+## Provider Prioritization & Scoring
 
-### JetBrains IDEs
+Providers are automatically selected based on a health score that considers:
+- **Circuit breaker state**: Open (0), half-open (-50), or closed (0 penalty)
+- **Failure rate**: -10 points per consecutive failure, capped at -40
+- **Response speed**: -10 points per second of avg response time, capped at -30
+- **Priority multiplier**: Each priority level reduces score by 10%
+  - Priority 0: 1.0x (full score)
+  - Priority 1: 0.9x (10% reduction)
+  - Priority 2: 0.8x (20% reduction)
 
-Settings → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings:
-- Schema: `./config/schema.json`
-- File pattern: `config/config.yaml`
+Example: Provider A (priority 0, health 85) vs Provider B (priority 0, health 70):
+- Score A: 85 × 1.0 = 85
+- Score B: 70 × 1.0 = 70
+- Result: Provider A selected
+
+Example with priority: Provider A (priority 1, health 95) vs Provider B (priority 0, health 85):
+- Score A: 95 × 0.9 = 85.5
+- Score B: 85 × 1.0 = 85
+- Result: Provider A still selected (healthy enough to overcome priority penalty)
+
+## Metrics Persistence
+
+Provider metrics are automatically saved to disk on shutdown and restored on startup:
+
+**Saved metrics:**
+- Consecutive failures
+- Last failure timestamp
+- Circuit breaker state
+- Average response time
+- P95 response time
+
+**Location:** `metrics/provider_metrics.json`
+
+This allows the proxy to "remember" provider health across restarts, avoiding repeatedly trying broken providers.
 
 ## Architecture
 
-- **Provider abstraction**: OpenAI-compatible API support
-- **Model registry**: Routes client requests to provider instances
+- **Provider abstraction**: OpenAI-compatible API support with minimal overhead
+- **Model registry**: Routes client requests to provider instances by health score
+- **Health scoring**: Priority-aware scoring with dynamic provider selection
+- **Metrics persistence**: Automatic save/restore of provider performance metrics
 - **Rate limiting**: Per-key sliding window tracking (see `src/models.py:RateLimitTracker`)
 - **Key rotation**: Automatic failover when keys exhausted (see `src/models.py:ApiKeyRotation`)
 - **Multipliers**: Scale how much tokens/requests count toward limits (see `src/registry.py:_apply_multiplier`)
+- **Model round-robin**: Automatically rotate through multiple provider model IDs per request
 
 ## Token Counting
 
@@ -201,21 +253,9 @@ Multipliers affect rate-limit accounting only, not response fields.
 
 If provider omits `usage`, tokens default to 0.
 
-## Multiplier Truth (from source code)
+## Creating Custom Providers
 
-See `src/models.py` line 39 and `src/registry.py` line 71:
-
-```python
-# models.py:39 - How tokens are counted
-counted_tokens = int(tokens * self.token_multiplier)  # 2.0 multiplier = counts as 2x
-
-# registry.py:71 - How limits are adjusted
-multiplied[key] = int(value / final_multiplier)  # Divided by multiplier to get effective limit
-```
-
-With `tokens_per_day: 100000` and `token_multiplier: 2.0` at instance level:
-- Tracked limit: 100000 ÷ 2.0 = 50000
-- 25000 actual tokens used → 50000 counted tokens → limit hit
+See [PROVIDERS.md](./PROVIDERS.md) for in-depth guide on implementing new provider types.
 
 ## Development
 

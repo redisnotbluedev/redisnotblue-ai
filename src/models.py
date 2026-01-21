@@ -460,7 +460,7 @@ class ProviderInstance:
 	def get_health_score(self) -> float:
 		"""
 		Calculate provider health score (0-100).
-		Higher is better. Considers success rate, speed, and availability.
+		Higher is better. Considers success rate, speed, availability, and priority.
 		"""
 		base_score = 100.0
 
@@ -479,7 +479,14 @@ class ProviderInstance:
 			speed_penalty = min(avg_time * 10, 30)
 			base_score -= speed_penalty
 
-		return max(0, min(base_score, 100))
+		final_score = max(0, min(base_score, 100))
+		
+		# Apply priority as multiplier (lower priority = higher multiplier boost)
+		# Priority 0 gets 1.0x, Priority 1 gets 0.9x, Priority 2 gets 0.8x, etc.
+		priority_multiplier = max(0.1, 1.0 - (self.priority * 0.1))
+		final_score *= priority_multiplier
+		
+		return final_score
 
 	def get_stats(self) -> dict:
 		"""Get comprehensive statistics."""
@@ -504,7 +511,7 @@ class Model:
 	owned_by: str = "system"
 
 	def get_available_providers(self) -> list[ProviderInstance]:
-		"""Return enabled providers sorted by priority and health score."""
+		"""Return enabled providers sorted by health score (priority factored in)."""
 		available = [
 			pi
 			for pi in self.provider_instances
@@ -514,8 +521,8 @@ class Model:
 		for pi in available:
 			if not pi.enabled and pi.should_retry():
 				pi.enabled = True
-		# Sort by health score (best first), then priority
-		return sorted(available, key=lambda pi: (-pi.get_health_score(), pi.priority))
+		# Sort by health score (best first) - priority already factored into score
+		return sorted(available, key=lambda pi: -pi.get_health_score())
 
 	def get_best_provider(self) -> Optional[ProviderInstance]:
 		"""Get the single best provider based on health and speed."""
