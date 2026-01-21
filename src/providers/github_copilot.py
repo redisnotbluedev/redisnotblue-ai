@@ -1,0 +1,99 @@
+from .openai import OpenAIProvider
+import requests, time, uuid
+
+class GitHubCopilotProvider(OpenAIProvider):
+	"""Provider for the internal GitHub Copilot API."""
+
+	def __init__(self, name: str, config: dict):
+		config.setdefault("base_url", "https://api.githubcopilot.com")
+		super().__init__(name, config)
+		self.expires_at = -1
+		self.copilot_key = None
+		self.base_renew_url = config.get("base_renew_url", "https://api.github.com")
+
+	def get_key(self, api_key: str):
+		if time.time() < self.expires_at:
+			return self.copilot_key
+
+		try:
+			response = requests.get(f"{self.base_renew_url}/copilot_internal/v2/token", headers={
+				"Authorization": f"Bearer {api_key}",
+				"Content-Type": "application/json",
+				"Accept": "application/json",
+				"User-Agent": "GitHubCopilotChat/0.26.7",
+				"Editor-Version": "vscode/1.96.5",
+				"Editor-Plugin-Version": "copilot-chat/0.26.7",
+				"X-GitHub-Api-Version": "2025-04-01"
+			})
+
+			if response.status_code != 200:
+				error_msg = response.text
+				try:
+					error_data = response.json()
+					if "error" in error_data:
+						error_msg = str(error_data["error"])
+				except Exception:
+					pass
+
+				raise Exception(
+					f"OpenAI API error {response.status_code}: {error_msg}"
+				)
+
+			data = response.json()
+			self.expires_at = data.get("expires_at", -1)
+			self.copilot_key = data.get("token", None)
+			return data.get("token", None)
+
+		except requests.exceptions.Timeout:
+			raise Exception(f"GitHub API timeout after {self.timeout}s when requesting token renewal")
+		except requests.exceptions.ConnectionError as e:
+			raise Exception(f"GitHub API connection error when requesting token renewal: {e}")
+		except requests.exceptions.RequestException as e:
+			raise Exception(f"GitHub API request error when requesting token renewal: {e}")
+
+	def make_request(self, request_data: dict, api_key: str):
+		"""Make request to GitHub Copilot API."""
+		url = f"{self.base_url}/chat/completions"
+		token = self.get_key(api_key)
+		headers = {
+			"Authorization": f"Bearer {token}",
+			"Content-Type": "application/json",
+			"Accept": "application/json",
+			"User-Agent": "GitHubCopilotChat/0.26.7",
+			"Editor-Version": "vscode/1.96.5",
+			"Editor-Plugin-Version": "copilot-chat/0.26.7",
+			"Copilot-Integration-Id": "vscode-chat",
+			"OpenAI-Intent": "conversation-panel",
+			"X-GitHub-Api-Version": "2025-04-01",
+			"X-Request-Id": str(uuid.uuid4()),
+			"X-Initiator": "user"
+		}
+
+		try:
+			response = requests.post(
+				url,
+				json=request_data,
+				headers=headers,
+				timeout=self.timeout
+			)
+
+			if response.status_code != 200:
+				error_msg = response.text
+				try:
+					error_data = response.json()
+					if "error" in error_data:
+						error_msg = str(error_data["error"])
+				except Exception:
+					pass
+
+				raise Exception(
+					f"OpenAI API error {response.status_code}: {error_msg}"
+				)
+
+			return response.json()
+		except requests.exceptions.Timeout:
+			raise Exception(f"Copilot API timeout after {self.timeout}s")
+		except requests.exceptions.ConnectionError as e:
+			raise Exception(f"Copilot API connection error: {e}")
+		except requests.exceptions.RequestException as e:
+			raise Exception(f"Copilot API request error: {e}")
