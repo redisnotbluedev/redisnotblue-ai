@@ -33,9 +33,7 @@ class TransformedResponse:
 	"""Response after transformation with metadata."""
 	data: dict
 	provider_name: str
-	model_id: str
-	provider_model_id: str
-	route_info: Dict[str, Any] = field(default_factory=dict)
+	original_request: Dict[str, Any] = field(default_factory=dict)
 
 
 class Provider(ABC):
@@ -129,35 +127,6 @@ class Provider(ABC):
 		"""
 		return {}
 
-	def map_model_id(self, model_id: str) -> str:
-		"""
-		Map the standardized model ID to provider's native model ID.
-
-		Args:
-			model_id: The model ID to map
-
-		Returns:
-			The provider's native model ID
-		"""
-		return model_id
-
-	def translate_model_id_in_response(
-		self,
-		provider_model_id: str,
-		original_model_id: str
-	) -> str:
-		"""
-		Translate provider's model ID back to original format in response.
-
-		Args:
-			provider_model_id: The provider's native model ID
-			original_model_id: The original model ID from the request
-
-		Returns:
-			The model ID to include in the response
-		"""
-		return original_model_id
-
 	@abstractmethod
 	def translate_request(
 		self,
@@ -197,17 +166,14 @@ class Provider(ABC):
 	def translate_response(
 		self,
 		response_data: dict,
-		original_model_id: str,
-		provider_model_id: str,
+		original_request: dict,
 	) -> TransformedResponse:
 		"""
 		Convert provider's response to OpenAI format.
-		Now handles model ID translation and metadata.
 
 		Args:
 			response_data: The raw response from the provider
-			original_model_id: The original model ID from the request
-			provider_model_id: The provider's native model ID
+			original_request: The original request data
 
 		Returns:
 			TransformedResponse with data and metadata
@@ -255,46 +221,35 @@ class Provider(ABC):
 		prefilled = self.prefill_request(messages, model_id, **kwargs)
 		merged_kwargs = {**prefilled, **kwargs}
 
-		# Step 3: Map model ID to provider's format
-		original_model_id = model_id
-		provider_model_id = self.map_model_id(model_id)
-
-		# Step 4: Transform request
+		# Step 3: Transform request
 		transformed_request = self.translate_request(
 			messages,
-			provider_model_id,
+			model_id,
 			**merged_kwargs
 		)
 
-		# Step 5: Make request
+		# Step 4: Make request
 		response_data = self.make_request(transformed_request.data, api_key)
 
-		# Step 6: Transform response
+		# Step 5: Transform response
 		transformed_response = self.translate_response(
 			response_data,
-			original_model_id,
-			provider_model_id
+			{
+				"messages": messages,
+				"model": model_id,
+				**merged_kwargs
+			}
 		)
 
-		# Step 7: Translate model ID back to original format in response
+		# Step 6: Add comprehensive metadata
 		response = transformed_response.data
-		if "model" in response:
-			response["model"] = self.translate_model_id_in_response(
-				response["model"],
-				original_model_id
-			)
-
-		# Step 8: Add routing information
-		response["_routing"] = {
-			"provider": self.name,
-			"provider_route": "/v1/chat/completions",
-			"original_model_id": original_model_id,
-			"provider_model_id": provider_model_id,
-			**transformed_response.route_info
+		response["_metadata"] = {
+			"provider": {
+				"name": self.name,
+				"config": self.config,
+			},
+			"request": transformed_response.original_request,
 		}
-
-		# Step 9: Add request data for debugging (optional)
-		response["_request_data"] = transformed_request.data
 
 		return response
 

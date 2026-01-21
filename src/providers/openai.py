@@ -237,8 +237,7 @@ class OpenAIProvider(Provider):
 	def translate_response(
 		self,
 		response_data: dict,
-		original_model_id: str = None,
-		provider_model_id: str = None,
+		original_request: dict,
 	) -> TransformedResponse:
 		"""Convert provider's response to OpenAI format."""
 		response = dict(response_data)
@@ -254,7 +253,7 @@ class OpenAIProvider(Provider):
 			response["created"] = int(time.time())
 
 		if "model" not in response:
-			response["model"] = provider_model_id or "unknown"
+			response["model"] = original_request.get("model", "unknown")
 
 		# Ensure usage stats exist
 		if "usage" not in response:
@@ -276,10 +275,5 @@ class OpenAIProvider(Provider):
 		return TransformedResponse(
 			data=response,
 			provider_name=self.name,
-			model_id=original_model_id or provider_model_id,
-			provider_model_id=provider_model_id,
-			route_info={
-				"model_in_response": response.get("model"),
-				"response_type": "chat_completion",
-			}
+			original_request=original_request,
 		)

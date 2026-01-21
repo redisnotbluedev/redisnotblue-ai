@@ -173,8 +173,7 @@ async def chat_completions(request: ChatCompletionRequest):
 
 				# Clean up internal metadata fields before returning
 				# These are useful for debugging but shouldn't be in the final response
-				response.pop("_routing", None)
-				response.pop("_request_data", None)
+				response.pop("_metadata", None)
 
 				return ChatCompletionResponse(**response)
 
