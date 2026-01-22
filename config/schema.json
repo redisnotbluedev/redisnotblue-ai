@@ -151,7 +151,7 @@
 								},
 								"multiplier": {
 									"type": "number",
-									"minimum": 0.1,
+									"minimum": 0,
 									"description": "How much each item counts toward limits (e.g., 2.0 = counts as 2x, effective limit halved)"
 								},
 								"token_multiplier": {
