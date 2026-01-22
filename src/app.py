@@ -295,31 +295,16 @@ async def health_check():
 
 	models = registry.list_models()
 	
-	# Calculate unique providers
+	# Calculate aggregate provider statistics
 	unique_providers = set()
-	provider_models_map = {}  # provider_name -> set of model_ids
-	
 	total_provider_instances = 0
 	total_enabled_providers = 0
 	health_scores = []
 	
 	for model in models:
-		if model.id not in provider_models_map:
-			provider_models_map[model.id] = []
-		
 		for pi in model.provider_instances:
 			total_provider_instances += 1
 			unique_providers.add(pi.provider.name)
-			provider_models_map[model.id].append({
-				"name": pi.provider.name,
-				"model_ids": pi.model_ids,
-				"enabled": pi.enabled,
-				"health_score": pi.get_health_score(),
-				"avg_response_time": pi.speed_tracker.get_average_time(),
-				"p95_response_time": pi.speed_tracker.get_percentile_95(),
-				"consecutive_failures": pi.consecutive_failures,
-				"circuit_breaker_state": pi.circuit_breaker.state,
-			})
 			
 			if pi.enabled:
 				total_enabled_providers += 1
@@ -375,8 +360,4 @@ async def health_check():
 			"avg_provider_health_score": round(avg_health_score, 2),
 			"avg_providers_per_model": round(avg_providers_per_model, 2),
 		},
-		"model_summary": {
-			"total_models": len(models),
-			"provider_instances_by_model": provider_models_map,
-		}
 	}
