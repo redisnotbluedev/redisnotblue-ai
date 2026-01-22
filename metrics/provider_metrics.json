@@ -1,0 +1,593 @@
+{
+  "gpt-5.2": {
+    "navyai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "voidai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "github_copilot": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "pollinations": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    }
+  },
+  "gpt-4o": {
+    "github_copilot": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "navyai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "voidai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "mnnai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "paxsenix": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    }
+  },
+  "claude-sonnet-4.5": {
+    "voidai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "github_copilot": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "pollinations": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    }
+  },
+  "claude-opus-4.5": {
+    "voidai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "github_copilot": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "pollinations": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    }
+  },
+  "gemini-3-flash": {
+    "navyai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "github_copilot": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "pollinations": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "google": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "mnnai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "paxsenix": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    }
+  },
+  "gemini-3-pro": {
+    "github_copilot": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "pollinations": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    }
+  },
+  "llama-4-maverick": {
+    "groq": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "electronhub": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "mnnai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "llm_gateway": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "apertis": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "paxsenix": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "navyai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "voidai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "a4f": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    }
+  },
+  "grok-4.1": {
+    "voidai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "apertis": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "navyai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    }
+  },
+  "kimi-k2": {
+    "voidai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "a4f": {
+      "consecutive_failures": 3,
+      "last_failure": 1769050715.4528909,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "huggingface": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "openrouter": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "electronhub": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "mnnai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "ollama_cloud": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "llm_gateway": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "apertis": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "paxsenix": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "navyai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    }
+  },
+  "deepseek-3.2": {
+    "voidai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "huggingface": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "electronhub": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "mnnai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "ollama_cloud": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "navyai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    }
+  },
+  "mistral-large-3": {
+    "mistral": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "mnnai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "ollama_cloud": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "voidai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "navyai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    }
+  },
+  "qwen-3-next-80b-a3b": {
+    "openrouter": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "huggingface": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "electronhub": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "mnnai": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "ollama_cloud": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    },
+    "llm_gateway": {
+      "consecutive_failures": 0,
+      "last_failure": null,
+      "circuit_breaker_state": "closed",
+      "circuit_breaker_fail_count": 0,
+      "circuit_breaker_success_count": 0,
+      "average_response_time": 0,
+      "p95_response_time": 0
+    }
+  }
+}

@@ -93,7 +93,7 @@ class OpenAIProvider(Provider):
 				"completion_tokens": completion,
 				"total_tokens": usage.get("total_tokens", (prompt or 0) + (completion or 0))
 			},
-			"provider": ""
+			"provider": self.name
 		}
 
 		return TransformedResponse(

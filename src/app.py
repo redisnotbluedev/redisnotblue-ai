@@ -30,12 +30,12 @@ async def lifespan(app: FastAPI):
 		config_path = os.getenv("CONFIG_PATH", "config/config.yaml")
 		print(f"Loading config from: {config_path}")
 		registry.load_from_config(config_path)
-		
+
 		# Load persisted global metrics
 		persisted_global = registry.metrics.load_global_metrics()
 		if persisted_global:
 			global_metrics.from_dict(persisted_global)
-		
+
 		print("Registry initialized successfully")
 	except Exception as e:
 		print(f"Error initializing registry: {e}")
@@ -119,7 +119,7 @@ async def chat_completions(request: ChatCompletionRequest):
 	if not model:
 		raise HTTPException(status_code=404, detail=f"Model not found: {request.model}")
 
-	messages = [msg.dict() for msg in request.messages]
+	messages = [msg.model_dump() for msg in request.messages]
 
 	kwargs = {}
 	if request.temperature is not None:
@@ -175,7 +175,7 @@ async def chat_completions(request: ChatCompletionRequest):
 				input_tokens = response.get("usage", {}).get("prompt_tokens", 0)
 				output_tokens = response.get("usage", {}).get("completion_tokens", 0)
 				total_tokens = input_tokens + output_tokens
-			
+
 				# Calculate credits based on tracker configuration (if needed)
 				# Note: Credits are auto-calculated in RateLimitTracker based on token counts
 				# Pass 0 here - the tracker will calculate from tokens and configured rates
@@ -202,15 +202,6 @@ async def chat_completions(request: ChatCompletionRequest):
 						completion_tokens=output_tokens,
 						credits=credits
 					)
-
-				# Ensure response has required fields
-				if "id" not in response:
-					response["id"] = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-				if "created" not in response:
-					response["created"] = int(time.time())
-
-				# Clean up internal metadata fields before returning
-				response.pop("_metadata", None)
 
 				return response
 
@@ -294,29 +285,29 @@ async def health_check():
 		}
 
 	models = registry.list_models()
-	
+
 	# Calculate aggregate provider statistics
 	unique_providers = set()
 	total_provider_instances = 0
 	total_enabled_providers = 0
 	health_scores = []
-	
+
 	for model in models:
 		for pi in model.provider_instances:
 			total_provider_instances += 1
 			unique_providers.add(pi.provider.name)
-			
+
 			if pi.enabled:
 				total_enabled_providers += 1
-			
+
 			health_scores.append(pi.get_health_score())
-	
+
 	# Calculate average provider health
 	avg_health_score = sum(health_scores) / len(health_scores) if health_scores else 0.0
-	
+
 	# Calculate average providers per model
 	avg_providers_per_model = total_provider_instances / len(models) if models else 0.0
-	
+
 	# Prepare global statistics
 	global_stats = {}
 	if global_metrics:
@@ -334,7 +325,7 @@ async def health_check():
 			"avg_ttft_ms": global_metrics.get_average_ttft() * 1000,
 			"p95_ttft_ms": global_metrics.get_p95_ttft() * 1000,
 		}
-	
+
 	# Determine overall system status
 	if not models or len(unique_providers) == 0:
 		system_status = "degraded"

@@ -8,7 +8,7 @@ from typing import Dict, Any
 
 class GlobalMetrics:
 	"""Track global system metrics."""
-	
+
 	def __init__(self):
 		self.total_requests: int = 0
 		self.total_tokens: int = 0
@@ -20,7 +20,7 @@ class GlobalMetrics:
 		self.start_time: float = time.time()
 		self.errors_count: int = 0
 
-	def record_request(self, duration: float, tokens: int = 0, prompt_tokens: int = 0, 
+	def record_request(self, duration: float, tokens: int = 0, prompt_tokens: int = 0,
 	                   completion_tokens: int = 0, credits: float = 0.0, ttft: float = 0.0) -> None:
 		"""Record a successful request."""
 		self.total_requests += 1
@@ -28,12 +28,12 @@ class GlobalMetrics:
 		self.total_prompt_tokens += prompt_tokens
 		self.total_completion_tokens += completion_tokens
 		self.total_credits_used += credits
-		
+
 		# Keep rolling window of last 1000 response times
 		self.response_times.append(duration)
 		if len(self.response_times) > 1000:
 			self.response_times.pop(0)
-		
+
 		# Track TTFT if provided
 		if ttft > 0:
 			self.first_token_times.append(ttft)
@@ -159,7 +159,7 @@ class MetricsPersistence:
 			"consecutive_failures": provider_instance.consecutive_failures,
 			"last_failure": provider_instance.last_failure,
 			"circuit_breaker_state": provider_instance.circuit_breaker.state,
-			"circuit_breaker_fail_count": provider_instance.circuit_breaker.fail_count,
+			"circuit_breaker_fail_count": provider_instance.circuit_breaker.failure_count,
 			"circuit_breaker_success_count": provider_instance.circuit_breaker.success_count,
 			"average_response_time": provider_instance.speed_tracker.get_average_time(),
 			"p95_response_time": provider_instance.speed_tracker.get_percentile_95(),
@@ -170,7 +170,7 @@ class MetricsPersistence:
 		try:
 			provider_instance.consecutive_failures = metrics.get("consecutive_failures", 0)
 			provider_instance.last_failure = metrics.get("last_failure")
-			
+
 			# Restore circuit breaker state
 			cb = provider_instance.circuit_breaker
 			cb.state = metrics.get("circuit_breaker_state", "closed")

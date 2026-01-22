@@ -221,6 +221,13 @@ class Provider(ABC):
 		prefilled = self.prefill_request(messages, model_id, **kwargs)
 		merged_kwargs = {**prefilled, **kwargs}
 
+		# Save original request before any transformation
+		original_request = {
+			"messages": messages,
+			"model": model_id,
+			**merged_kwargs
+		}
+
 		# Step 3: Transform request
 		transformed_request = self.translate_request(
 			messages,
@@ -234,11 +241,7 @@ class Provider(ABC):
 		# Step 5: Transform response
 		transformed_response = self.translate_response(
 			response_data,
-			{
-				"messages": messages,
-				"model": model_id,
-				**merged_kwargs
-			}
+			original_request
 		)
 
 		response = transformed_response.data

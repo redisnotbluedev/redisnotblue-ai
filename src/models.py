@@ -607,14 +607,28 @@ class ApiKeyRotation:
 class SpeedTracker:
 	"""Tracks response speed for a provider."""
 	response_times: List[float] = field(default_factory=list)
+	token_counts: List[int] = field(default_factory=list)
+	output_token_counts: List[int] = field(default_factory=list)
+	ttft_times: List[float] = field(default_factory=list)
 	min_response_time: float = float('inf')
 	max_response_time: float = 0.0
 
-	def record_response(self, duration: float) -> None:
-		"""Record a response time."""
+	def record_response(self, duration: float, tokens: int = 0, output_tokens: int = 0, ttft: float = 0.0) -> None:
+		"""Record a response time with token counts and TTFT."""
 		self.response_times.append(duration)
+		self.token_counts.append(tokens)
+		self.output_token_counts.append(output_tokens)
+		
+		if ttft > 0:
+			self.ttft_times.append(ttft)
+		
 		if len(self.response_times) > 100:
 			self.response_times.pop(0)
+			self.token_counts.pop(0)
+			self.output_token_counts.pop(0)
+			if self.ttft_times:
+				self.ttft_times.pop(0)
+		
 		self.min_response_time = min(self.min_response_time, duration)
 		self.max_response_time = max(self.max_response_time, duration)
 
@@ -624,11 +638,35 @@ class SpeedTracker:
 			return 0
 		return sum(self.response_times) / len(self.response_times)
 
+	def get_tokens_per_second(self) -> float:
+		"""Get average output tokens per second (output tokens only for fair TTFT comparison)."""
+		if not self.response_times or not self.output_token_counts:
+			return 0.0
+		total_output_tokens = sum(self.output_token_counts)
+		if total_output_tokens == 0:
+			return 0.0
+		total_time = sum(self.response_times)
+		return total_output_tokens / total_time if total_time > 0 else 0.0
+
+	def get_average_ttft(self) -> float:
+		"""Get average time to first token."""
+		if not self.ttft_times:
+			return 0.0
+		return sum(self.ttft_times) / len(self.ttft_times)
+
 	def get_percentile_95(self) -> float:
 		"""Get 95th percentile response time."""
 		if not self.response_times:
 			return 0
 		sorted_times = sorted(self.response_times)
+		idx = int(len(sorted_times) * 0.95)
+		return sorted_times[idx] if idx < len(sorted_times) else sorted_times[-1]
+
+	def get_p95_ttft(self) -> float:
+		"""Get 95th percentile TTFT."""
+		if not self.ttft_times:
+			return 0.0
+		sorted_times = sorted(self.ttft_times)
 		idx = int(len(sorted_times) * 0.95)
 		return sorted_times[idx] if idx < len(sorted_times) else sorted_times[-1]
 
@@ -708,7 +746,7 @@ class ProviderInstance:
 		"""Get current backoff delay."""
 		return self.backoff.get_delay()
 
-	def record_response(self, duration: float, tokens: int = 0, api_key: Optional[str] = None, prompt_tokens: int = 0, completion_tokens: int = 0, credits: float = 0.0) -> None:
+	def record_response(self, duration: float, tokens: int = 0, api_key: Optional[str] = None, prompt_tokens: int = 0, completion_tokens: int = 0, credits: float = 0.0, ttft: float = 0.0) -> None:
 		"""Record response metrics.
 
 		Args:
@@ -718,8 +756,9 @@ class ProviderInstance:
 			prompt_tokens: Number of prompt tokens
 			completion_tokens: Number of completion tokens
 			credits: Pre-calculated credits (optional)
+			ttft: Time to first token in seconds (optional)
 		"""
-		self.speed_tracker.record_response(duration)
+		self.speed_tracker.record_response(duration, tokens=tokens, output_tokens=completion_tokens, ttft=ttft)
 		if self.api_key_rotation:
 			self.api_key_rotation.record_usage(api_key, tokens, prompt_tokens, completion_tokens, credits)
 
@@ -732,7 +771,8 @@ class ProviderInstance:
 	def get_health_score(self) -> float:
 		"""
 		Calculate provider health score (0-100).
-		Higher is better. Considers success rate, speed, availability, and priority.
+		Higher is better. Considers success rate, speed, and availability.
+		Priority is applied separately as a relative ranking bonus.
 		"""
 		base_score = 100.0
 
@@ -745,19 +785,22 @@ class ProviderInstance:
 		# Factor in failure rate
 		base_score -= min(self.consecutive_failures * 10, 40)
 
-		# Factor in speed (prefer faster providers)
-		avg_time = self.speed_tracker.get_average_time()
-		if avg_time > 0:
-			speed_penalty = min(avg_time * 10, 30)
+		# Factor in speed (prefer faster throughput)
+		tokens_per_sec = self.speed_tracker.get_tokens_per_second()
+		if tokens_per_sec > 0:
+			# Lower tokens/sec = slower = higher penalty (want high throughput)
+			# Normalize by assuming 50 tokens/sec is baseline (good)
+			speed_penalty = min(max(0, (50 - tokens_per_sec) / 50 * 30), 30)
 			base_score -= speed_penalty
+		
+		# Factor in TTFT if available (lower TTFT is better)
+		avg_ttft = self.speed_tracker.get_average_ttft()
+		if avg_ttft > 0:
+			# Higher TTFT = worse, penalize (baseline 0.5s is good)
+			ttft_penalty = min(avg_ttft * 20, 20)
+			base_score -= ttft_penalty
 
 		final_score = max(0, min(base_score, 100))
-
-		# Apply priority as multiplier (lower priority = higher multiplier boost)
-		# Priority 0 gets 1.0x, Priority 1 gets 0.9x, Priority 2 gets 0.8x, etc.
-		priority_multiplier = max(0.1, 1.0 - (self.priority * 0.1))
-		final_score *= priority_multiplier
-
 		return final_score
 
 	def get_stats(self) -> dict:
@@ -783,7 +826,7 @@ class Model:
 	owned_by: str = "system"
 
 	def get_available_providers(self) -> list[ProviderInstance]:
-		"""Return enabled providers sorted by health score (priority factored in)."""
+		"""Return enabled providers sorted by health score with relative priority ranking."""
 		available = [
 			pi
 			for pi in self.provider_instances
@@ -793,8 +836,28 @@ class Model:
 		for pi in available:
 			if not pi.enabled and pi.should_retry():
 				pi.enabled = True
-		# Sort by health score (best first) - priority already factored into score
-		return sorted(available, key=lambda pi: -pi.get_health_score())
+		
+		# Calculate relative priority ranking: lower priority = better rank = higher bonus
+		# Providers are ranked 0 to N-1 based on their priority value
+		if available:
+			sorted_by_priority = sorted(available, key=lambda pi: pi.priority)
+			priority_rank = {pi: idx for idx, pi in enumerate(sorted_by_priority)}
+			
+			# Number of providers determines bonus granularity
+			num_providers = len(available)
+			
+			# Calculate adjusted scores with priority bonuses
+			def score_with_priority(pi: ProviderInstance) -> float:
+				base_score = pi.get_health_score()
+				rank = priority_rank[pi]
+				# Best priority (lowest value) gets highest bonus, worst priority gets negative bonus
+				# Formula: bonus ranges from +(num_providers-1) to -(num_providers-1)
+				priority_bonus = (num_providers - 1) - (2 * rank)
+				return base_score + priority_bonus
+			
+			return sorted(available, key=score_with_priority, reverse=True)
+		
+		return available
 
 	def get_best_provider(self) -> Optional[ProviderInstance]:
 		"""Get the single best provider based on health and speed."""
