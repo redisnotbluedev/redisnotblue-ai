@@ -11,22 +11,31 @@ from typing import Optional, Union
 from dotenv import load_dotenv
 
 from .registry import ModelRegistry
+from .metrics import GlobalMetrics
 
 load_dotenv()
 
 registry: Optional[ModelRegistry] = None
+global_metrics: Optional[GlobalMetrics] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 	"""Manage application lifespan events."""
-	global registry
+	global registry, global_metrics
 	try:
 		# Startup
 		registry = ModelRegistry()
+		global_metrics = GlobalMetrics()
 		config_path = os.getenv("CONFIG_PATH", "config/config.yaml")
 		print(f"Loading config from: {config_path}")
 		registry.load_from_config(config_path)
+		
+		# Load persisted global metrics
+		persisted_global = registry.metrics.load_global_metrics()
+		if persisted_global:
+			global_metrics.from_dict(persisted_global)
+		
 		print("Registry initialized successfully")
 	except Exception as e:
 		print(f"Error initializing registry: {e}")
@@ -38,6 +47,9 @@ async def lifespan(app: FastAPI):
 	if registry:
 		registry.save_metrics()
 		print("Metrics saved")
+	if global_metrics:
+		registry.metrics.save_global_metrics(global_metrics)
+		print("Global metrics saved")
 
 
 class ChatMessage(BaseModel):
@@ -181,6 +193,16 @@ async def chat_completions(request: ChatCompletionRequest):
 				provider_instance.mark_api_key_success(api_key)
 				provider_instance.mark_success()
 
+				# Record global metrics
+				if global_metrics:
+					global_metrics.record_request(
+						duration=duration,
+						tokens=total_tokens,
+						prompt_tokens=input_tokens,
+						completion_tokens=output_tokens,
+						credits=credits
+					)
+
 				# Ensure response has required fields
 				if "id" not in response:
 					response["id"] = f"chatcmpl-{uuid.uuid4().hex[:24]}"
@@ -198,6 +220,8 @@ async def chat_completions(request: ChatCompletionRequest):
 				last_error = validation_errors
 				provider_instance.mark_failure()
 				provider_instance.increment_retry_count()
+				if global_metrics:
+					global_metrics.record_error()
 
 			except Exception as e:
 				last_error = str(e)
@@ -207,6 +231,8 @@ async def chat_completions(request: ChatCompletionRequest):
 
 				provider_instance.mark_failure()
 				provider_instance.increment_retry_count()
+				if global_metrics:
+					global_metrics.record_error()
 
 				if not provider_instance.should_retry_request():
 					break
@@ -258,8 +284,9 @@ async def provider_stats():
 	return stats
 
 
-@app.get("/health")
+@app.get("/v1/health")
 async def health_check():
+	"""Get comprehensive health and statistics."""
 	if registry is None:
 		return {
 			"status": "error",
@@ -267,29 +294,89 @@ async def health_check():
 		}
 
 	models = registry.list_models()
-	providers_info = []
-
+	
+	# Calculate unique providers
+	unique_providers = set()
+	provider_models_map = {}  # provider_name -> set of model_ids
+	
+	total_provider_instances = 0
+	total_enabled_providers = 0
+	health_scores = []
+	
 	for model in models:
-		model_info = {
-			"model_id": model.id,
-			"providers": []
-		}
+		if model.id not in provider_models_map:
+			provider_models_map[model.id] = []
+		
 		for pi in model.provider_instances:
-			provider_info = {
+			total_provider_instances += 1
+			unique_providers.add(pi.provider.name)
+			provider_models_map[model.id].append({
 				"name": pi.provider.name,
 				"model_ids": pi.model_ids,
 				"enabled": pi.enabled,
-				"has_api_keys": pi.api_key_rotation is not None and len(pi.api_key_rotation.api_keys) > 0 if pi.api_key_rotation else False
-			}
-			if pi.api_key_rotation:
-				provider_info["api_key_count"] = len(pi.api_key_rotation.api_keys)
-			model_info["providers"].append(provider_info)
-		providers_info.append(model_info)
+				"health_score": pi.get_health_score(),
+				"avg_response_time": pi.speed_tracker.get_average_time(),
+				"p95_response_time": pi.speed_tracker.get_percentile_95(),
+				"consecutive_failures": pi.consecutive_failures,
+				"circuit_breaker_state": pi.circuit_breaker.state,
+			})
+			
+			if pi.enabled:
+				total_enabled_providers += 1
+			
+			health_scores.append(pi.get_health_score())
+	
+	# Calculate average provider health
+	avg_health_score = sum(health_scores) / len(health_scores) if health_scores else 0.0
+	
+	# Calculate average providers per model
+	avg_providers_per_model = total_provider_instances / len(models) if models else 0.0
+	
+	# Prepare global statistics
+	global_stats = {}
+	if global_metrics:
+		global_stats = {
+			"total_requests": global_metrics.total_requests,
+			"total_tokens": global_metrics.total_tokens,
+			"total_prompt_tokens": global_metrics.total_prompt_tokens,
+			"total_completion_tokens": global_metrics.total_completion_tokens,
+			"total_errors": global_metrics.errors_count,
+			"error_rate_percent": (global_metrics.errors_count / global_metrics.total_requests * 100) if global_metrics.total_requests > 0 else 0.0,
+			"total_credits_used": global_metrics.total_credits_used,
+			"uptime_seconds": global_metrics.get_uptime_seconds(),
+			"avg_response_time_ms": global_metrics.get_average_response_time() * 1000,
+			"p95_response_time_ms": global_metrics.get_p95_response_time() * 1000,
+			"avg_ttft_ms": global_metrics.get_average_ttft() * 1000,
+			"p95_ttft_ms": global_metrics.get_p95_ttft() * 1000,
+		}
+	
+	# Determine overall system status
+	if not models or len(unique_providers) == 0:
+		system_status = "degraded"
+	elif total_enabled_providers == 0:
+		system_status = "down"
+	elif avg_health_score >= 80:
+		system_status = "healthy"
+	elif avg_health_score >= 50:
+		system_status = "degraded"
+	else:
+		system_status = "unhealthy"
 
 	return {
-		"status": "ok",
+		"status": system_status,
 		"registry_initialized": True,
-		"total_models": len(models),
-		"total_providers": sum(len(m["providers"]) for m in providers_info),
-		"models": providers_info
+		"timestamp": int(time.time()),
+		"global_stats": global_stats,
+		"provider_summary": {
+			"total_providers": len(unique_providers),
+			"total_provider_instances": total_provider_instances,
+			"enabled_provider_instances": total_enabled_providers,
+			"disabled_provider_instances": total_provider_instances - total_enabled_providers,
+			"avg_provider_health_score": round(avg_health_score, 2),
+			"avg_providers_per_model": round(avg_providers_per_model, 2),
+		},
+		"model_summary": {
+			"total_models": len(models),
+			"provider_instances_by_model": provider_models_map,
+		}
 	}
