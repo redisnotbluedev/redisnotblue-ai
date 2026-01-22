@@ -71,6 +71,7 @@ class GitHubCopilotProvider(OpenAIProvider):
 			"X-Initiator": "user"
 		}
 
+		start_time = time.time()
 		try:
 			response = requests.post(
 				url,
@@ -93,7 +94,7 @@ class GitHubCopilotProvider(OpenAIProvider):
 					f"Copilot API error {response.status_code}: {error_msg}"
 				)
 
-			return self._process_stream(response)
+			return self._process_stream(response, start_time)
 		except requests.exceptions.Timeout:
 			raise Exception(f"Copilot API timeout after {self.timeout}s")
 		except requests.exceptions.ConnectionError as e:

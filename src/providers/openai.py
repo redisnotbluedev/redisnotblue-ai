@@ -44,6 +44,7 @@ class OpenAIProvider(Provider):
 			"Content-Type": "application/json",
 		}
 
+		start_time = time.time()
 		try:
 			response = requests.post(
 				url,
@@ -66,7 +67,7 @@ class OpenAIProvider(Provider):
 					f"OpenAI API error {response.status_code}: {error_msg}"
 				)
 
-			return self._process_stream(response)
+			return self._process_stream(response, start_time)
 		except requests.exceptions.Timeout:
 			raise Exception(f"OpenAI API timeout after {self.timeout}s")
 		except requests.exceptions.ConnectionError as e:
@@ -74,7 +75,7 @@ class OpenAIProvider(Provider):
 		except requests.exceptions.RequestException as e:
 			raise Exception(f"OpenAI API request error: {e}")
 
-	def _process_stream(self, response) -> dict:
+	def _process_stream(self, response, start_time) -> dict:
 		"""Process streaming response and collect chunks."""
 		chunks = []
 		first_chunk_time = None
@@ -97,7 +98,7 @@ class OpenAIProvider(Provider):
 					chunk = json.loads(data_str)
 
 					if first_chunk_time is None:
-						first_chunk_time = time.time()
+						first_chunk_time = time.time() - start_time
 
 					if "choices" in chunk and chunk["choices"]:
 						choice = chunk["choices"][0]

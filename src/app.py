@@ -197,11 +197,18 @@ async def chat_completions(request: ChatCompletionRequest):
 	if not available_providers:
 		raise HTTPException(status_code=503, detail="No available providers for this model")
 
+	# Prioritize: providers with no data first, then by health score
+	no_data_providers = [p for p in available_providers if len(p.speed_tracker.response_times) == 0]
+	has_data_providers = [p for p in available_providers if len(p.speed_tracker.response_times) > 0]
+	
+	# Try no-data providers first, then data providers
+	providers_to_try = no_data_providers + has_data_providers
+
 	last_error = None
 	validation_errors = None
 
 	# Limit to 2 providers before failing
-	for provider_instance in available_providers[:2]:
+	for provider_instance in providers_to_try[:2]:
 		provider_instance.reset_retry_count()
 
 		while provider_instance.should_retry_request():
