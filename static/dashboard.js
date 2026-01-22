@@ -91,13 +91,14 @@ async function updateHealth() {
 	document.getElementById('token-breakdown').textContent = `${formatNumber(promptTokens)} input / ${formatNumber(completionTokens)} output`;
 
 	const providerSummary = health.provider_summary || {};
-	document.getElementById('total-providers').textContent = providerSummary.total_providers || 0;
-	document.getElementById('enabled-providers').textContent = providerSummary.enabled_provider_instances || 0;
-	document.getElementById('disabled-providers').textContent = providerSummary.disabled_provider_instances || 0;
+	const totalProviders = providerSummary.total_providers || 0;
+	const enabledProviders = providerSummary.enabled_provider_instances || 0;
+	const totalModels = providerSummary.total_providers || 0;
+	
+	document.getElementById('enabled-providers').textContent = enabledProviders;
+	document.getElementById('total-providers-text').textContent = `of ${totalProviders} total`;
 	document.getElementById('avg-health').textContent = (providerSummary.avg_provider_health_score || 0).toFixed(1);
-
-	document.getElementById('total-models').textContent = formatNumber(stats.total_models || 0);
-	document.getElementById('avg-providers-per-model').textContent = (providerSummary.avg_providers_per_model || 0).toFixed(1);
+	document.getElementById('avg-providers-per-model-text').textContent = `${(providerSummary.avg_providers_per_model || 0).toFixed(1)} models`;
 }
 
 async function updateModels() {
@@ -112,17 +113,15 @@ async function updateModels() {
 		return;
 	}
 
-	let html = '<div class="table-wrapper"><table><thead><tr><th>Model ID</th><th>Owner</th><th>Created</th></tr></thead><tbody>';
-	
+	let html = '<div class="models-grid">';
 	modelData.forEach(model => {
-		html += `<tr>
-			<td class="model-name">${escapeHtml(model.id)}</td>
-			<td>${escapeHtml(model.owned_by)}</td>
-			<td>${new Date(model.created * 1000).toLocaleDateString()}</td>
-		</tr>`;
+		html += `<div class="model-card">
+			<div class="model-card-name">${escapeHtml(model.id)}</div>
+			<div class="model-card-count">${escapeHtml(model.owned_by)}</div>
+		</div>`;
 	});
+	html += '</div>';
 
-	html += '</tbody></table></div>';
 	container.innerHTML = html;
 }
 
@@ -131,7 +130,7 @@ async function updateProviderStats() {
 	if (!stats) return;
 
 	const container = document.getElementById('providers-container');
-	const modelKeys = Object.keys(stats);
+	const modelKeys = Object.keys(stats).sort();
 
 	if (modelKeys.length === 0) {
 		container.innerHTML = '<div class="no-data">No provider statistics available</div>';
@@ -144,36 +143,57 @@ async function updateProviderStats() {
 		const modelStats = stats[modelId];
 		const providers = modelStats.providers || [];
 
-		html += `<h3 style="font-size: 16px; margin: 20px 0 10px 0; color: #cbd5e1;">Model: ${escapeHtml(modelId)}</h3>`;
-		html += '<div class="table-wrapper"><table><thead><tr><th>Provider</th><th>Priority</th><th>Enabled</th><th>Health Score</th><th>Tokens/Sec</th><th>Avg TTFT</th><th>P95 TTFT</th><th>Models</th></tr></thead><tbody>';
+		html += `<div class="provider-table-section">
+			<div class="table-container">
+				<div class="table-title">📌 ${escapeHtml(modelId)}</div>
+				<table>
+					<thead>
+						<tr>
+							<th style="width: 20%;">Provider</th>
+							<th style="width: 10%;">Priority</th>
+							<th style="width: 10%;">Enabled</th>
+							<th style="width: 20%;">Health</th>
+							<th style="width: 12%;">Tok/Sec</th>
+							<th style="width: 14%;">Avg TTFT</th>
+							<th style="width: 14%;">P95 TTFT</th>
+						</tr>
+					</thead>
+					<tbody>`;
 
 		providers.forEach(provider => {
 			const healthScore = provider.health_score || 0;
-			const healthClass = getHealthBarClass(healthScore);
+			const hasData = provider.avg_response_time > 0;
+			const healthDisplay = hasData ? healthScore.toFixed(0) : '—';
+			const healthClass = hasData ? getHealthBarClass(healthScore) : '';
 			const tokensPerSec = (provider.tokens_per_second || 0).toFixed(1);
 			const avgTTFT = formatTime(provider.average_ttft);
 			const p95TTFT = formatTime(provider.p95_ttft);
 
 			html += `<tr>
 				<td class="provider-name">${escapeHtml(provider.provider || '—')}</td>
-				<td>${provider.priority || 0}</td>
-				<td><span class="enabled-badge enabled-${provider.enabled}">
-					${provider.enabled ? '✓ Yes' : '✗ No'}
+				<td style="text-align: center;">${provider.priority || 0}</td>
+				<td style="text-align: center;"><span class="enabled-badge enabled-${provider.enabled}">
+					${provider.enabled ? '✓' : '✗'}
 				</span></td>
-				<td>
-					<div class="metric-bar">
-						<div class="bar-bg"><div class="bar-fill ${healthClass}" style="width: ${healthScore}%"></div></div>
-						<span class="bar-value">${healthScore.toFixed(0)}</span>
-					</div>
-				</td>
-				<td>${tokensPerSec}</td>
-				<td>${avgTTFT}</td>
-				<td>${p95TTFT}</td>
-				<td>${(provider.model_ids || []).join(', ') || '—'}</td>
+				<td>`;
+			
+			if (hasData) {
+				html += `<div class="metric-bar">
+					<div class="bar-bg"><div class="bar-fill ${healthClass}" style="width: ${healthScore}%"></div></div>
+					<span class="bar-value">${healthDisplay}</span>
+				</div>`;
+			} else {
+				html += `<span style="color: #64748b;">—</span>`;
+			}
+
+			html += `</td>
+				<td style="text-align: right;">${tokensPerSec}</td>
+				<td style="text-align: right;">${avgTTFT}</td>
+				<td style="text-align: right;">${p95TTFT}</td>
 			</tr>`;
 		});
 
-		html += '</tbody></table></div>';
+		html += `</tbody></table></div></div>`;
 	});
 
 	container.innerHTML = html;

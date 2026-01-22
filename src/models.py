@@ -772,8 +772,14 @@ class ProviderInstance:
 		"""
 		Calculate provider health score (0-100).
 		Higher is better. Considers success rate, speed, and availability.
+		Providers with no data are PRIORITIZED to gather metrics.
 		Priority is applied separately as a relative ranking bonus.
 		"""
+		# Prioritize providers with no data - give them a huge bonus so they get tested
+		has_data = len(self.speed_tracker.response_times) > 0
+		if not has_data:
+			return 120.0
+
 		base_score = 100.0
 
 		# Factor in circuit breaker state
