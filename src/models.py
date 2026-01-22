@@ -25,48 +25,64 @@ class RateLimitTracker:
 	request_multiplier: float = 1.0  # How much each request counts (e.g., 2.0 = counts as 2x)
 	credits_per_token: float = 0.0  # How many credits per token (0 = disabled)
 	credits_per_million_tokens: float = 0.0  # How many credits per million tokens (0 = disabled)
+	credits_per_in_token: float = 0.0  # How many credits per input token (0 = disabled)
+	credits_per_out_token: float = 0.0  # How many credits per output token (0 = disabled)
+	credits_per_million_in_tokens: float = 0.0  # How many credits per million input tokens (0 = disabled)
+	credits_per_million_out_tokens: float = 0.0  # How many credits per million output tokens (0 = disabled)
 	credits_per_request: float = 0.0  # How many credits per request (0 = disabled)
 	credit_gains: dict = field(default_factory=dict)  # {"minute": 100, "hour": 1000, ...} - credits gained per interval (provider-level)
 	credit_maxes: dict = field(default_factory=dict)  # {"minute": 100, "hour": 1000, ...} - max credits that can accumulate (provider-level)
 	credit_balance: dict = field(default_factory=dict)  # {"minute": 50.0, "hour": 500.0, ...} - current credit balance per interval
 
-	def add_request(self, tokens: int = 0, prompt_tokens: int = 0, completion_tokens: int = 0, credits: float = 0.0) -> None:
+	def add_request(self, tokens: int = 0, in_tokens: int = 0, out_tokens: int = 0, credits: float = 0.0) -> None:
 		"""Record a request with calendar-based period tracking.
 		
 		Args:
-			tokens: Total tokens (legacy, used if prompt_tokens/completion_tokens not provided)
-			prompt_tokens: Number of prompt tokens
-			completion_tokens: Number of completion tokens
+			tokens: Total tokens (legacy, used if in_tokens/out_tokens not provided)
+			in_tokens: Number of input tokens
+			out_tokens: Number of output tokens
 			credits: Pre-calculated credits (optional, will be calculated from tokens if not provided)
 		"""
 		current_time = time.time()
 		now = datetime.fromtimestamp(current_time, tz=timezone.utc)
 		
 		# Calculate tokens
-		if prompt_tokens > 0 or completion_tokens > 0:
-			total_tokens = prompt_tokens + completion_tokens
-			counted_prompt = int(prompt_tokens * self.token_multiplier)
-			counted_completion = int(completion_tokens * self.token_multiplier)
+		if in_tokens > 0 or out_tokens > 0:
+			total_tokens = in_tokens + out_tokens
+			counted_in = int(in_tokens * self.token_multiplier)
+			counted_out = int(out_tokens * self.token_multiplier)
 			counted_total = int(total_tokens * self.token_multiplier)
 		elif tokens > 0:
 			counted_total = int(tokens * self.token_multiplier)
-			counted_prompt = 0
-			counted_completion = 0
+			counted_in = 0
+			counted_out = 0
 		else:
 			counted_total = 0
-			counted_prompt = 0
-			counted_completion = 0
+			counted_in = 0
+			counted_out = 0
 		
 		# Calculate requests
 		counted_requests = int(self.request_multiplier)
 		
 		# Calculate credits
 		if credits <= 0:
-			if counted_total > 0:
-				if self.credits_per_token > 0:
-					credits = counted_total * self.credits_per_token
-				elif self.credits_per_million_tokens > 0:
-					credits = (counted_total / 1_000_000) * self.credits_per_million_tokens
+			credits = 0.0
+			# Total token rates
+			if self.credits_per_token > 0:
+				credits += counted_total * self.credits_per_token
+			elif self.credits_per_million_tokens > 0:
+				credits += (counted_total / 1_000_000) * self.credits_per_million_tokens
+			# Input token rates
+			if self.credits_per_in_token > 0:
+				credits += counted_in * self.credits_per_in_token
+			elif self.credits_per_million_in_tokens > 0:
+				credits += (counted_in / 1_000_000) * self.credits_per_million_in_tokens
+			# Output token rates
+			if self.credits_per_out_token > 0:
+				credits += counted_out * self.credits_per_out_token
+			elif self.credits_per_million_out_tokens > 0:
+				credits += (counted_out / 1_000_000) * self.credits_per_million_out_tokens
+			# Request rate
 			if self.credits_per_request > 0:
 				credits += self.credits_per_request
 		
@@ -85,12 +101,12 @@ class RateLimitTracker:
 			
 			# Initialize period if needed
 			if period not in self.calendar_usage:
-				self.calendar_usage[period] = {"requests": 0, "tokens": 0, "prompt_tokens": 0, "completion_tokens": 0, "credits": 0.0}
+				self.calendar_usage[period] = {"requests": 0, "tokens": 0, "in_tokens": 0, "out_tokens": 0, "credits": 0.0}
 				self.calendar_reset_times[period] = self._get_calendar_reset_time(period, now).timestamp()
 			
 			# Reset if needed
 			if current_time >= self.calendar_reset_times[period]:
-				self.calendar_usage[period] = {"requests": 0, "tokens": 0, "prompt_tokens": 0, "completion_tokens": 0, "credits": 0.0}
+				self.calendar_usage[period] = {"requests": 0, "tokens": 0, "in_tokens": 0, "out_tokens": 0, "credits": 0.0}
 				next_reset = self._get_calendar_reset_time(period, datetime.fromtimestamp(current_time, tz=timezone.utc))
 				self.calendar_reset_times[period] = next_reset.timestamp()
 			
@@ -99,10 +115,10 @@ class RateLimitTracker:
 				self.calendar_usage[period]["requests"] += counted_requests
 			elif limit_type == "tokens":
 				self.calendar_usage[period]["tokens"] += counted_total
-			elif limit_type == "prompt_tokens":
-				self.calendar_usage[period]["prompt_tokens"] += counted_prompt
-			elif limit_type == "completion_tokens":
-				self.calendar_usage[period]["completion_tokens"] += counted_completion
+			elif limit_type == "in_tokens":
+				self.calendar_usage[period]["in_tokens"] += counted_in
+			elif limit_type == "out_tokens":
+				self.calendar_usage[period]["out_tokens"] += counted_out
 			elif limit_type == "credits":
 				self.calendar_usage[period]["credits"] += credits
 
@@ -154,10 +170,10 @@ class RateLimitTracker:
 				count = self.calendar_usage[period]["requests"]
 			elif limit_type == "tokens":
 				count = self.calendar_usage[period]["tokens"]
-			elif limit_type == "prompt_tokens":
-				count = self.calendar_usage[period]["prompt_tokens"]
-			elif limit_type == "completion_tokens":
-				count = self.calendar_usage[period]["completion_tokens"]
+			elif limit_type == "in_tokens":
+				count = self.calendar_usage[period]["in_tokens"]
+			elif limit_type == "out_tokens":
+				count = self.calendar_usage[period]["out_tokens"]
 			elif limit_type == "credits":
 				count = self.calendar_usage[period]["credits"]
 			else:
@@ -201,10 +217,10 @@ class RateLimitTracker:
 				count = self.calendar_usage[period]["requests"]
 			elif limit_type == "tokens":
 				count = self.calendar_usage[period]["tokens"]
-			elif limit_type == "prompt_tokens":
-				count = self.calendar_usage[period]["prompt_tokens"]
-			elif limit_type == "completion_tokens":
-				count = self.calendar_usage[period]["completion_tokens"]
+			elif limit_type == "in_tokens":
+				count = self.calendar_usage[period]["in_tokens"]
+			elif limit_type == "out_tokens":
+				count = self.calendar_usage[period]["out_tokens"]
 			elif limit_type == "credits":
 				count = self.calendar_usage[period]["credits"]
 			else:
@@ -455,17 +471,28 @@ class ApiKeyRotation:
 			self.rate_limiters[key].token_multiplier = token_multiplier
 			self.rate_limiters[key].request_multiplier = request_multiplier
 
-	def set_credit_rates(self, credits_per_token: float = 0.0, credits_per_million_tokens: float = 0.0, credits_per_request: float = 0.0) -> None:
+	def set_credit_rates(self, credits_per_token: float = 0.0, credits_per_million_tokens: float = 0.0, 
+	                      credits_per_in_token: float = 0.0, credits_per_out_token: float = 0.0,
+	                      credits_per_million_in_tokens: float = 0.0, credits_per_million_out_tokens: float = 0.0,
+	                      credits_per_request: float = 0.0) -> None:
 		"""Set credit rate configuration for all API keys.
 		
 		Args:
-			credits_per_token: Credit cost per token
-			credits_per_million_tokens: Credit cost per million tokens
+			credits_per_token: Credit cost per token (total)
+			credits_per_million_tokens: Credit cost per million tokens (total)
+			credits_per_in_token: Credit cost per input token
+			credits_per_out_token: Credit cost per output token
+			credits_per_million_in_tokens: Credit cost per million input tokens
+			credits_per_million_out_tokens: Credit cost per million output tokens
 			credits_per_request: Credit cost per request
 		"""
 		for key in self.api_keys:
 			self.rate_limiters[key].credits_per_token = credits_per_token
 			self.rate_limiters[key].credits_per_million_tokens = credits_per_million_tokens
+			self.rate_limiters[key].credits_per_in_token = credits_per_in_token
+			self.rate_limiters[key].credits_per_out_token = credits_per_out_token
+			self.rate_limiters[key].credits_per_million_in_tokens = credits_per_million_in_tokens
+			self.rate_limiters[key].credits_per_million_out_tokens = credits_per_million_out_tokens
 			self.rate_limiters[key].credits_per_request = credits_per_request
 
 	def set_credit_gain_and_max(self, credit_gains: dict, credit_maxes: dict) -> None:
@@ -528,18 +555,18 @@ class ApiKeyRotation:
 		self.consecutive_failures[api_key] = 0
 		self.disabled_keys[api_key] = None
 
-	def record_usage(self, api_key: Optional[str], tokens: int = 0, prompt_tokens: int = 0, completion_tokens: int = 0, credits: float = 0.0) -> None:
+	def record_usage(self, api_key: Optional[str], tokens: int = 0, in_tokens: int = 0, out_tokens: int = 0, credits: float = 0.0) -> None:
 		"""Record token/request usage.
 
 		Args:
 			api_key: API key used
 			tokens: Total tokens (legacy parameter)
-			prompt_tokens: Number of prompt tokens
-			completion_tokens: Number of completion tokens
+			in_tokens: Number of input tokens
+			out_tokens: Number of output tokens
 			credits: Pre-calculated credits (optional, will be calculated from tokens if not provided)
 		"""
 		if api_key and api_key in self.rate_limiters:
-			self.rate_limiters[api_key].add_request(tokens, prompt_tokens, completion_tokens, credits)
+			self.rate_limiters[api_key].add_request(tokens, in_tokens, out_tokens, credits)
 			# Spend credits if configured
 			if credits > 0:
 				self.rate_limiters[api_key].spend_credits(credits)

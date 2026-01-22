@@ -159,12 +159,22 @@ class ModelRegistry:
 		"""Extract credit rate configuration from instance config.
 		
 		Returns:
-			Tuple of (credits_per_token, credits_per_million_tokens, credits_per_request)
+			Tuple of (credits_per_token, credits_per_million_tokens, 
+			          credits_per_in_token, credits_per_out_token,
+			          credits_per_million_in_tokens, credits_per_million_out_tokens,
+			          credits_per_request)
 		"""
 		credits_per_token = config.get("credits_per_token", 0.0)
 		credits_per_million_tokens = config.get("credits_per_million_tokens", 0.0)
+		credits_per_in_token = config.get("credits_per_in_token", 0.0)
+		credits_per_out_token = config.get("credits_per_out_token", 0.0)
+		credits_per_million_in_tokens = config.get("credits_per_million_in_tokens", 0.0)
+		credits_per_million_out_tokens = config.get("credits_per_million_out_tokens", 0.0)
 		credits_per_request = config.get("credits_per_request", 0.0)
-		return credits_per_token, credits_per_million_tokens, credits_per_request
+		return (credits_per_token, credits_per_million_tokens, 
+		        credits_per_in_token, credits_per_out_token,
+		        credits_per_million_in_tokens, credits_per_million_out_tokens,
+		        credits_per_request)
 
 	def _extract_credit_gain_and_max(self, config: dict) -> tuple:
 		"""Extract provider-level credit gain and max configuration.
@@ -289,9 +299,9 @@ class ModelRegistry:
 						api_key_rotation.set_multipliers(token_multiplier, request_multiplier)
 					
 					# Set credit rates if configured
-					credits_per_token, credits_per_million_tokens, credits_per_request = self._extract_credit_rates(instance_config)
-					if credits_per_token > 0 or credits_per_million_tokens > 0 or credits_per_request > 0:
-						api_key_rotation.set_credit_rates(credits_per_token, credits_per_million_tokens, credits_per_request)
+					credit_rates = self._extract_credit_rates(instance_config)
+					if any(rate > 0 for rate in credit_rates):
+						api_key_rotation.set_credit_rates(*credit_rates)
 
 					# Set provider-level credit gain and max if configured
 					if provider_name in self.provider_credit_config:
@@ -312,9 +322,9 @@ class ModelRegistry:
 							api_key_rotation.set_multipliers(token_multiplier, request_multiplier)
 					
 						# Set credit rates if configured
-						credits_per_token, credits_per_million_tokens, credits_per_request = self._extract_credit_rates(instance_config)
-						if credits_per_token > 0 or credits_per_million_tokens > 0 or credits_per_request > 0:
-							api_key_rotation.set_credit_rates(credits_per_token, credits_per_million_tokens, credits_per_request)
+						credit_rates = self._extract_credit_rates(instance_config)
+						if any(rate > 0 for rate in credit_rates):
+							api_key_rotation.set_credit_rates(*credit_rates)
 
 						# Set provider-level credit gain and max if configured
 						if provider_name in self.provider_credit_config:

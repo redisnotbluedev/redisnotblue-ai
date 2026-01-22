@@ -25,6 +25,10 @@
 						"pattern": "^https?://",
 						"description": "API endpoint URL (without /chat/completions suffix)"
 					},
+					"chat_completions_path": {
+						"type": "string",
+						"description": "Override path to the Chat Completions API (without base URL)."
+					},
 					"api_keys": {
 						"type": "array",
 						"description": "List of API keys for this provider",
@@ -181,45 +185,45 @@
 											"minimum": 1,
 											"description": "Max tokens per 2592000 seconds (30 days)"
 										},
-										"prompt_tokens_per_minute": {
+										"in_tokens_per_minute": {
 											"type": "integer",
 											"minimum": 1,
-											"description": "Max prompt tokens per 60 seconds"
+											"description": "Max input tokens per 60 seconds"
 										},
-										"prompt_tokens_per_hour": {
+										"in_tokens_per_hour": {
 											"type": "integer",
 											"minimum": 1,
-											"description": "Max prompt tokens per 3600 seconds"
+											"description": "Max input tokens per 3600 seconds"
 										},
-										"prompt_tokens_per_day": {
+										"in_tokens_per_day": {
 											"type": "integer",
 											"minimum": 1,
-											"description": "Max prompt tokens per 86400 seconds (24 hours)"
+											"description": "Max input tokens per 86400 seconds (24 hours)"
 										},
-										"prompt_tokens_per_month": {
+										"in_tokens_per_month": {
 											"type": "integer",
 											"minimum": 1,
-											"description": "Max prompt tokens per 2592000 seconds (30 days)"
+											"description": "Max input tokens per 2592000 seconds (30 days)"
 										},
-										"completion_tokens_per_minute": {
+										"out_tokens_per_minute": {
 											"type": "integer",
 											"minimum": 1,
-											"description": "Max completion tokens per 60 seconds"
+											"description": "Max output tokens per 60 seconds"
 										},
-										"completion_tokens_per_hour": {
+										"out_tokens_per_hour": {
 											"type": "integer",
 											"minimum": 1,
-											"description": "Max completion tokens per 3600 seconds"
+											"description": "Max output tokens per 3600 seconds"
 										},
-										"completion_tokens_per_day": {
+										"out_tokens_per_day": {
 											"type": "integer",
 											"minimum": 1,
-											"description": "Max completion tokens per 86400 seconds (24 hours)"
+											"description": "Max output tokens per 86400 seconds (24 hours)"
 										},
-										"completion_tokens_per_month": {
+										"out_tokens_per_month": {
 											"type": "integer",
 											"minimum": 1,
-											"description": "Max completion tokens per 2592000 seconds (30 days)"
+											"description": "Max output tokens per 2592000 seconds (30 days)"
 										},
 										"credits_per_minute": {
 											"type": "number",
@@ -246,12 +250,32 @@
 								"credits_per_token": {
 									"type": "number",
 									"minimum": 0,
-									"description": "Credit cost per token"
+									"description": "Credit cost per token (total)"
 								},
 								"credits_per_million_tokens": {
 									"type": "number",
 									"minimum": 0,
-									"description": "Credit cost per million tokens"
+									"description": "Credit cost per million tokens (total)"
+								},
+								"credits_per_in_token": {
+									"type": "number",
+									"minimum": 0,
+									"description": "Credit cost per input token"
+								},
+								"credits_per_out_token": {
+									"type": "number",
+									"minimum": 0,
+									"description": "Credit cost per output token"
+								},
+								"credits_per_million_in_tokens": {
+									"type": "number",
+									"minimum": 0,
+									"description": "Credit cost per million input tokens"
+								},
+								"credits_per_million_out_tokens": {
+									"type": "number",
+									"minimum": 0,
+									"description": "Credit cost per million output tokens"
 								},
 								"credits_per_request": {
 									"type": "number",
@@ -340,45 +364,45 @@
 					"minimum": 1,
 					"description": "Max tokens per 2592000 seconds (30 days)"
 				},
-				"prompt_tokens_per_minute": {
+				"in_tokens_per_minute": {
 					"type": "integer",
 					"minimum": 1,
-					"description": "Max prompt tokens per 60 seconds"
+					"description": "Max input tokens per 60 seconds"
 				},
-				"prompt_tokens_per_hour": {
+				"in_tokens_per_hour": {
 					"type": "integer",
 					"minimum": 1,
-					"description": "Max prompt tokens per 3600 seconds"
+					"description": "Max input tokens per 3600 seconds"
 				},
-				"prompt_tokens_per_day": {
+				"in_tokens_per_day": {
 					"type": "integer",
 					"minimum": 1,
-					"description": "Max prompt tokens per 86400 seconds (24 hours)"
+					"description": "Max input tokens per 86400 seconds (24 hours)"
 				},
-				"prompt_tokens_per_month": {
+				"in_tokens_per_month": {
 					"type": "integer",
 					"minimum": 1,
-					"description": "Max prompt tokens per 2592000 seconds (30 days)"
+					"description": "Max input tokens per 2592000 seconds (30 days)"
 				},
-				"completion_tokens_per_minute": {
+				"out_tokens_per_minute": {
 					"type": "integer",
 					"minimum": 1,
-					"description": "Max completion tokens per 60 seconds"
+					"description": "Max output tokens per 60 seconds"
 				},
-				"completion_tokens_per_hour": {
+				"out_tokens_per_hour": {
 					"type": "integer",
 					"minimum": 1,
-					"description": "Max completion tokens per 3600 seconds"
+					"description": "Max output tokens per 3600 seconds"
 				},
-				"completion_tokens_per_day": {
+				"out_tokens_per_day": {
 					"type": "integer",
 					"minimum": 1,
-					"description": "Max completion tokens per 86400 seconds (24 hours)"
+					"description": "Max output tokens per 86400 seconds (24 hours)"
 				},
-				"completion_tokens_per_month": {
+				"out_tokens_per_month": {
 					"type": "integer",
 					"minimum": 1,
-					"description": "Max completion tokens per 2592000 seconds (30 days)"
+					"description": "Max output tokens per 2592000 seconds (30 days)"
 				},
 				"credits_per_minute": {
 					"type": "number",

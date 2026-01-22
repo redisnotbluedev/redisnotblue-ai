@@ -13,6 +13,7 @@ class OpenAIProvider(Provider):
 		super().__init__(name, config)
 		self.base_url = config.get("base_url", "https://api.openai.com/v1")
 		self.timeout = config.get("timeout", 60)
+		self.chat_completions_path = config.get("chat_completions_path", "/chat/completions") # Ollama uses /chat not /chat/completions, added for parity and further customisation
 
 	def translate_request(
 		self, messages: list[dict], model_id: str, **kwargs

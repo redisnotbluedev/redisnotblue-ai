@@ -140,12 +140,12 @@ rate_limits:
 - Total capacity: 200k tokens/day across both keys
 - If key-1 exhausted, proxy rotates to key-2
 
-**Rate Limits: Global vs Prompt vs Completion**
+**Rate Limits: Global vs Input vs Output**
 
 You can configure rate limits for:
-- `tokens_per_*`: Total tokens (prompt + completion) - global limit
-- `prompt_tokens_per_*`: Prompt tokens only
-- `completion_tokens_per_*`: Completion tokens only
+- `tokens_per_*`: Total tokens (input + output) - global limit
+- `in_tokens_per_*`: Input tokens only
+- `out_tokens_per_*`: Output tokens only
 
 **Example with separate token limits:**
 ```yaml
@@ -158,16 +158,16 @@ providers:
     rate_limits:
       requests_per_minute: 3500
       tokens_per_day: 2000000           # Global total cap
-      prompt_tokens_per_day: 1200000    # Max input tokens
-      completion_tokens_per_day: 800000 # Max output tokens
+      in_tokens_per_day: 1200000        # Max input tokens
+      out_tokens_per_day: 800000        # Max output tokens
 ```
 
 All limits work with time windows: `_per_minute`, `_per_hour`, `_per_day`, `_per_month`.
 
 **How it works:**
 - Each limit is checked independently (ALL must pass)
-- If you set `tokens_per_day: 1000` and `prompt_tokens_per_day: 600`, both apply
-- `prompt_tokens + completion_tokens` cannot exceed `tokens_per_day`
+- If you set `tokens_per_day: 1000` and `in_tokens_per_day: 600`, both apply
+- `in_tokens + out_tokens` cannot exceed `tokens_per_day`
 - Multipliers work the same way: each token counts multiplied by `token_multiplier`
 
 **Example combining all limits:**
@@ -199,8 +199,12 @@ Provider-level credits represent the budget or rate quota that a provider alloca
 ### Configuration
 
 **Credit Rates (model-provider instance level):**
-- `credits_per_token`: Credit cost per token (e.g., 0.001 = 0.001 credits per token)
-- `credits_per_million_tokens`: Credit cost per 1M tokens (e.g., 1.0 = 1 credit per million tokens)
+- `credits_per_token`: Credit cost per token - total (e.g., 0.001 = 0.001 credits per token)
+- `credits_per_million_tokens`: Credit cost per 1M tokens - total (e.g., 1.0 = 1 credit per million tokens)
+- `credits_per_in_token`: Credit cost per input token (e.g., 0.0005)
+- `credits_per_out_token`: Credit cost per output token (e.g., 0.001)
+- `credits_per_million_in_tokens`: Credit cost per 1M input tokens
+- `credits_per_million_out_tokens`: Credit cost per 1M output tokens
 - `credits_per_request`: Credit cost per request (e.g., 5.0 = 5 credits per request)
 
 **Credit Accrual (provider level):**
@@ -280,11 +284,20 @@ models:
         model_id: "gpt-4"
         
         # Model-level: how much using this model costs
+        # Option 1: Total token rates
         credits_per_token: 0.001        # 1 credit per 1000 tokens
-        credits_per_request: 1.0        # 1 credit per request
         
-        # Alternative: credits per million tokens
+        # Option 2: Separate input/output rates
+        # credits_per_in_token: 0.0005
+        # credits_per_out_token: 0.001
+        
+        # Option 3: Per-million rates
         # credits_per_million_tokens: 1000.0
+        # credits_per_million_in_tokens: 500.0
+        # credits_per_million_out_tokens: 1000.0
+        
+        # Plus per-request cost
+        credits_per_request: 1.0        # 1 credit per request
 ```
 
 **High-Frequency API:**
@@ -339,19 +352,22 @@ providers:
     credits_gain_per_day: 10000.0
 
 models:
-  gpt-4-expensive:
-    providers:
-      openai:
-        model_id: "gpt-4"
-        credits_per_million_tokens: 30.0    # $0.03 per 1M tokens
-        credits_per_request: 2.0
+ gpt-4-expensive:
+   providers:
+     openai:
+       model_id: "gpt-4"
+       # Separate pricing for input vs output
+       credits_per_million_in_tokens: 15.0   # $0.015 per 1M input tokens
+       credits_per_million_out_tokens: 60.0  # $0.060 per 1M output tokens
+       credits_per_request: 2.0
 
-  gpt-3.5-cheap:
-    providers:
-      openai:
-        model_id: "gpt-3.5-turbo"
-        credits_per_million_tokens: 0.5     # $0.0005 per 1M tokens
-        credits_per_request: 0.1
+ gpt-3.5-cheap:
+   providers:
+     openai:
+       model_id: "gpt-3.5-turbo"
+       credits_per_million_in_tokens: 0.15   # $0.00015 per 1M input tokens
+       credits_per_million_out_tokens: 0.6   # $0.0006 per 1M output tokens
+       credits_per_request: 0.1
 ```
 
 ### Behavior When Credits Exhausted
