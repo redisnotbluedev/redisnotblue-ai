@@ -1,13 +1,12 @@
 """Data models for the proxy server."""
 
 import time
+from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, List
 
-
 if TYPE_CHECKING:
-	from providers.base import Provider
-
+	from .providers.base import Provider
 
 @dataclass
 class Message:
@@ -19,26 +18,72 @@ class Message:
 @dataclass
 class RateLimitTracker:
 	"""Tracks rate limiting and usage for an API key with flexible time periods."""
-	limits: dict = field(default_factory=dict)  # {"requests_per_minute": 3500, "tokens_per_hour": 90000, ...}
+	limits: dict = field(default_factory=dict)  # {"requests_per_minute": 3500, "tokens_per_hour": 90000, "credits_per_day": 1000, ...}
 	requests: List[float] = field(default_factory=list)
-	token_usage: List[tuple] = field(default_factory=list)
+	token_usage: List[tuple] = field(default_factory=list)  # Total tokens (prompt + completion)
+	prompt_token_usage: List[tuple] = field(default_factory=list)  # Prompt tokens only
+	completion_token_usage: List[tuple] = field(default_factory=list)  # Completion tokens only
+	credit_usage: List[tuple] = field(default_factory=list)  # (timestamp, credits) - for time-window tracking
+	calendar_credits: dict = field(default_factory=dict)  # {period: credits_used} for calendar-based resets
+	calendar_reset_times: dict = field(default_factory=dict)  # {period: next_reset_timestamp}
 	token_multiplier: float = 1.0  # How much each token counts (e.g., 2.0 = counts as 2x)
 	request_multiplier: float = 1.0  # How much each request counts (e.g., 2.0 = counts as 2x)
+	credits_per_token: float = 0.0  # How many credits per token (0 = disabled)
+	credits_per_million_tokens: float = 0.0  # How many credits per million tokens (0 = disabled)
+	credits_per_request: float = 0.0  # How many credits per request (0 = disabled)
 
-	def add_request(self, tokens: int = 0) -> None:
-		"""Record a request. Applies multipliers to token/request counting."""
+	def add_request(self, tokens: int = 0, prompt_tokens: int = 0, completion_tokens: int = 0, credits: float = 0.0) -> None:
+		"""Record a request. Applies multipliers to token/request counting.
+		
+		Args:
+			tokens: Total tokens (legacy, used if prompt_tokens/completion_tokens not provided)
+			prompt_tokens: Number of prompt tokens
+			completion_tokens: Number of completion tokens
+			credits: Credits used (pre-calculated, or will be calculated from tokens)
+		"""
 		current_time = time.time()
 		# Apply request multiplier
 		for _ in range(int(self.request_multiplier)):
 			self.requests.append(current_time)
 		if len(self.requests) > 1000:
 			self.requests.pop(0)
-		if tokens > 0:
-			# Apply token multiplier
+		
+		# Calculate total tokens for credit computation
+		total_tokens = 0
+		
+		# Track tokens
+		if prompt_tokens > 0 or completion_tokens > 0:
+			# Use separate prompt/completion tracking
+			if prompt_tokens > 0:
+				counted_prompt = int(prompt_tokens * self.token_multiplier)
+				self.prompt_token_usage.append((current_time, counted_prompt))
+				if len(self.prompt_token_usage) > 1000:
+					self.prompt_token_usage.pop(0)
+			
+			if completion_tokens > 0:
+				counted_completion = int(completion_tokens * self.token_multiplier)
+				self.completion_token_usage.append((current_time, counted_completion))
+				if len(self.completion_token_usage) > 1000:
+					self.completion_token_usage.pop(0)
+			
+			# Also track total for legacy limits
+			total = prompt_tokens + completion_tokens
+			if total > 0:
+				counted_total = int(total * self.token_multiplier)
+				self.token_usage.append((current_time, counted_total))
+				if len(self.token_usage) > 1000:
+					self.token_usage.pop(0)
+				total_tokens = counted_total
+		elif tokens > 0:
+			# Legacy: use total tokens parameter
 			counted_tokens = int(tokens * self.token_multiplier)
 			self.token_usage.append((current_time, counted_tokens))
 			if len(self.token_usage) > 1000:
 				self.token_usage.pop(0)
+			total_tokens = counted_tokens
+		
+		# Track credits
+		self._record_credits(current_time, total_tokens, credits)
 
 	def _get_time_window_seconds(self, period: str) -> int:
 		"""Get the time window in seconds for a period."""
@@ -56,9 +101,19 @@ class RateLimitTracker:
 		return sum(1 for t in items if current_time - t < window_seconds)
 
 	def _count_tokens_in_window(self, window_seconds: int) -> int:
-		"""Count tokens used in the specified time window."""
+		"""Count total tokens used in the specified time window."""
 		current_time = time.time()
 		return sum(tokens for t, tokens in self.token_usage if current_time - t < window_seconds)
+
+	def _count_prompt_tokens_in_window(self, window_seconds: int) -> int:
+		"""Count prompt tokens used in the specified time window."""
+		current_time = time.time()
+		return sum(tokens for t, tokens in self.prompt_token_usage if current_time - t < window_seconds)
+
+	def _count_completion_tokens_in_window(self, window_seconds: int) -> int:
+		"""Count completion tokens used in the specified time window."""
+		current_time = time.time()
+		return sum(tokens for t, tokens in self.completion_token_usage if current_time - t < window_seconds)
 
 	def is_rate_limited(self) -> bool:
 		"""Check if rate limited by any configured limit."""
@@ -83,12 +138,27 @@ class RateLimitTracker:
 				if count >= limit_value:
 					return True
 
+			elif limit_type == "prompt_tokens":
+				count = self._count_prompt_tokens_in_window(window_seconds)
+				if count >= limit_value:
+					return True
+
+			elif limit_type == "completion_tokens":
+				count = self._count_completion_tokens_in_window(window_seconds)
+				if count >= limit_value:
+					return True
+
+			elif limit_type == "credits":
+				# Use calendar-based resets for credit limits
+				count = self._get_calendar_credits(period)
+				if count >= limit_value:
+					return True
+
 		return False
 
 	def get_usage_stats(self) -> dict:
 		"""Get current usage statistics across all configured limits."""
 		stats = {}
-		current_time = time.time()
 
 		for limit_key, limit_value in self.limits.items():
 			if "_per_" not in limit_key:
@@ -109,7 +179,111 @@ class RateLimitTracker:
 				count = self._count_tokens_in_window(window_seconds)
 				stats[limit_key] = {"used": count, "limit": limit_value}
 
+			elif limit_type == "prompt_tokens":
+				count = self._count_prompt_tokens_in_window(window_seconds)
+				stats[limit_key] = {"used": count, "limit": limit_value}
+
+			elif limit_type == "completion_tokens":
+				count = self._count_completion_tokens_in_window(window_seconds)
+				stats[limit_key] = {"used": count, "limit": limit_value}
+
+			elif limit_type == "credits":
+				count = self._get_calendar_credits(period)
+				stats[limit_key] = {"used": count, "limit": limit_value}
+
 		return stats
+
+	def _get_calendar_reset_time(self, period: str, now: datetime) -> datetime:
+		"""Calculate the next calendar reset time for a period.
+		
+		Args:
+			period: 'minute', 'hour', 'day', or 'month'
+			now: Current datetime
+		
+		Returns:
+			datetime of next reset
+		"""
+		if period == "minute":
+			# Reset at next :00 seconds
+			return now.replace(second=0, microsecond=0) + timedelta(minutes=1)
+		elif period == "hour":
+			# Reset at next top of hour
+			return now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+		elif period == "day":
+			# Reset at next midnight
+			return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+		elif period == "month":
+			# Reset on 1st of next month at 00:00
+			if now.month == 12:
+				return now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+			else:
+				return now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+		return now
+	
+	def _record_credits(self, current_time: float, tokens: int, credits_param: float = 0.0) -> None:
+		"""Record credit usage based on configuration."""
+		credits = credits_param  # Use pre-calculated credits if provided
+		
+		# Calculate credits from token-based rates if not provided
+		if credits_param <= 0 and tokens > 0:
+			if self.credits_per_token > 0:
+				credits = tokens * self.credits_per_token
+			elif self.credits_per_million_tokens > 0:
+				credits = (tokens / 1_000_000) * self.credits_per_million_tokens
+		
+		# Add request-based credits
+		if self.credits_per_request > 0:
+			credits += self.credits_per_request
+		
+		if credits > 0:
+			# Track for sliding window limits (like credits_per_minute)
+			self.credit_usage.append((current_time, credits))
+			if len(self.credit_usage) > 1000:
+				self.credit_usage.pop(0)
+			
+			# Track for calendar-based limits
+			now = datetime.now(timezone.utc)
+			for limit_key in self.limits.keys():
+				if not limit_key.startswith("credits_per_"):
+					continue
+				
+				period = limit_key.replace("credits_per_", "")
+				if period not in ("minute", "hour", "day", "month"):
+					continue
+				
+				# Initialize or check reset
+				if period not in self.calendar_credits:
+					self.calendar_credits[period] = 0.0
+					self.calendar_reset_times[period] = self._get_calendar_reset_time(period, now).timestamp()
+				
+				# Reset if needed
+				if current_time >= self.calendar_reset_times[period]:
+					self.calendar_credits[period] = 0.0
+					next_reset = self._get_calendar_reset_time(period, datetime.fromtimestamp(current_time, tz=timezone.utc))
+					self.calendar_reset_times[period] = next_reset.timestamp()
+				
+				# Add to current period
+				self.calendar_credits[period] += credits
+	
+	def _count_credits_in_window(self, window_seconds: int) -> float:
+		"""Count credits used in the specified time window."""
+		current_time = time.time()
+		return sum(credits for t, credits in self.credit_usage if current_time - t < window_seconds)
+	
+	def _get_calendar_credits(self, period: str) -> float:
+		"""Get credits used in current calendar period."""
+		if period not in self.calendar_credits:
+			return 0.0
+		
+		# Check if reset is needed
+		current_time = time.time()
+		if current_time >= self.calendar_reset_times.get(period, 0):
+			now = datetime.fromtimestamp(current_time, tz=timezone.utc)
+			self.calendar_credits[period] = 0.0
+			next_reset = self._get_calendar_reset_time(period, now)
+			self.calendar_reset_times[period] = next_reset.timestamp()
+		
+		return self.calendar_credits[period]
 
 	def time_until_available(self) -> float:
 		"""Seconds until next request can be made (based on first limit hit)."""
@@ -260,6 +434,19 @@ class ApiKeyRotation:
 			self.rate_limiters[key].token_multiplier = token_multiplier
 			self.rate_limiters[key].request_multiplier = request_multiplier
 
+	def set_credit_rates(self, credits_per_token: float = 0.0, credits_per_million_tokens: float = 0.0, credits_per_request: float = 0.0) -> None:
+		"""Set credit rate configuration for all API keys.
+		
+		Args:
+			credits_per_token: Credit cost per token
+			credits_per_million_tokens: Credit cost per million tokens
+			credits_per_request: Credit cost per request
+		"""
+		for key in self.api_keys:
+			self.rate_limiters[key].credits_per_token = credits_per_token
+			self.rate_limiters[key].credits_per_million_tokens = credits_per_million_tokens
+			self.rate_limiters[key].credits_per_request = credits_per_request
+
 	def get_next_key(self) -> Optional[str]:
 		"""Get the next available API key using round-robin."""
 		if not self.api_keys:
@@ -304,10 +491,18 @@ class ApiKeyRotation:
 		self.consecutive_failures[api_key] = 0
 		self.disabled_keys[api_key] = None
 
-	def record_usage(self, api_key: str, tokens: int = 0) -> None:
-		"""Record token/request usage."""
-		if api_key in self.rate_limiters:
-			self.rate_limiters[api_key].add_request(tokens)
+	def record_usage(self, api_key: Optional[str], tokens: int = 0, prompt_tokens: int = 0, completion_tokens: int = 0, credits: float = 0.0) -> None:
+		"""Record token/request usage.
+
+		Args:
+			api_key: API key used
+			tokens: Total tokens (legacy parameter)
+			prompt_tokens: Number of prompt tokens
+			completion_tokens: Number of completion tokens
+			credits: Pre-calculated credits (optional, will be calculated from tokens if not provided)
+		"""
+		if api_key and api_key in self.rate_limiters:
+			self.rate_limiters[api_key].add_request(tokens, prompt_tokens, completion_tokens, credits)
 
 	def _check_cooldowns(self) -> None:
 		"""Check if any disabled keys can be re-enabled."""
@@ -445,11 +640,20 @@ class ProviderInstance:
 		"""Get current backoff delay."""
 		return self.backoff.get_delay()
 
-	def record_response(self, duration: float, tokens: int, api_key: str) -> None:
-		"""Record response metrics."""
+	def record_response(self, duration: float, tokens: int = 0, api_key: Optional[str] = None, prompt_tokens: int = 0, completion_tokens: int = 0, credits: float = 0.0) -> None:
+		"""Record response metrics.
+
+		Args:
+			duration: Response time in seconds
+			tokens: Total tokens (legacy parameter)
+			api_key: API key used for the request
+			prompt_tokens: Number of prompt tokens
+			completion_tokens: Number of completion tokens
+			credits: Pre-calculated credits (optional)
+		"""
 		self.speed_tracker.record_response(duration)
 		if self.api_key_rotation:
-			self.api_key_rotation.record_usage(api_key, tokens)
+			self.api_key_rotation.record_usage(api_key, tokens, prompt_tokens, completion_tokens, credits)
 
 	def get_next_model_id(self) -> str:
 		"""Get the next model ID in round-robin rotation."""
@@ -480,12 +684,12 @@ class ProviderInstance:
 			base_score -= speed_penalty
 
 		final_score = max(0, min(base_score, 100))
-		
+
 		# Apply priority as multiplier (lower priority = higher multiplier boost)
 		# Priority 0 gets 1.0x, Priority 1 gets 0.9x, Priority 2 gets 0.8x, etc.
 		priority_multiplier = max(0.1, 1.0 - (self.priority * 0.1))
 		final_score *= priority_multiplier
-		
+
 		return final_score
 
 	def get_stats(self) -> dict:

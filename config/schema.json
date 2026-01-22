@@ -140,8 +140,83 @@
 											"type": "integer",
 											"minimum": 1,
 											"description": "Max tokens per 2592000 seconds (30 days)"
+										},
+										"prompt_tokens_per_minute": {
+											"type": "integer",
+											"minimum": 1,
+											"description": "Max prompt tokens per 60 seconds"
+										},
+										"prompt_tokens_per_hour": {
+											"type": "integer",
+											"minimum": 1,
+											"description": "Max prompt tokens per 3600 seconds"
+										},
+										"prompt_tokens_per_day": {
+											"type": "integer",
+											"minimum": 1,
+											"description": "Max prompt tokens per 86400 seconds (24 hours)"
+										},
+										"prompt_tokens_per_month": {
+											"type": "integer",
+											"minimum": 1,
+											"description": "Max prompt tokens per 2592000 seconds (30 days)"
+										},
+										"completion_tokens_per_minute": {
+											"type": "integer",
+											"minimum": 1,
+											"description": "Max completion tokens per 60 seconds"
+										},
+										"completion_tokens_per_hour": {
+											"type": "integer",
+											"minimum": 1,
+											"description": "Max completion tokens per 3600 seconds"
+										},
+										"completion_tokens_per_day": {
+											"type": "integer",
+											"minimum": 1,
+											"description": "Max completion tokens per 86400 seconds (24 hours)"
+										},
+										"completion_tokens_per_month": {
+											"type": "integer",
+											"minimum": 1,
+											"description": "Max completion tokens per 2592000 seconds (30 days)"
+										},
+										"credits_per_minute": {
+											"type": "number",
+											"minimum": 0,
+											"description": "Max credits per 60 seconds (resets at top of minute)"
+										},
+										"credits_per_hour": {
+											"type": "number",
+											"minimum": 0,
+											"description": "Max credits per hour (resets at top of hour)"
+										},
+										"credits_per_day": {
+											"type": "number",
+											"minimum": 0,
+											"description": "Max credits per day (resets at midnight UTC)"
+										},
+										"credits_per_month": {
+											"type": "number",
+											"minimum": 0,
+											"description": "Max credits per month (resets on 1st at 00:00 UTC)"
 										}
 									}
+								},
+								"credits_per_token": {
+									"type": "number",
+									"minimum": 0,
+									"description": "Credit cost per token"
+								},
+								"credits_per_million_tokens": {
+									"type": "number",
+									"minimum": 0,
+									"description": "Credit cost per million tokens"
+								},
+								"credits_per_request": {
+									"type": "number",
+									"minimum": 0,
+									"description": "Credit cost per request"
 								},
 								"max_retries": {
 									"type": "integer",
@@ -224,6 +299,66 @@
 					"type": "integer",
 					"minimum": 1,
 					"description": "Max tokens per 2592000 seconds (30 days)"
+				},
+				"prompt_tokens_per_minute": {
+					"type": "integer",
+					"minimum": 1,
+					"description": "Max prompt tokens per 60 seconds"
+				},
+				"prompt_tokens_per_hour": {
+					"type": "integer",
+					"minimum": 1,
+					"description": "Max prompt tokens per 3600 seconds"
+				},
+				"prompt_tokens_per_day": {
+					"type": "integer",
+					"minimum": 1,
+					"description": "Max prompt tokens per 86400 seconds (24 hours)"
+				},
+				"prompt_tokens_per_month": {
+					"type": "integer",
+					"minimum": 1,
+					"description": "Max prompt tokens per 2592000 seconds (30 days)"
+				},
+				"completion_tokens_per_minute": {
+					"type": "integer",
+					"minimum": 1,
+					"description": "Max completion tokens per 60 seconds"
+				},
+				"completion_tokens_per_hour": {
+					"type": "integer",
+					"minimum": 1,
+					"description": "Max completion tokens per 3600 seconds"
+				},
+				"completion_tokens_per_day": {
+					"type": "integer",
+					"minimum": 1,
+					"description": "Max completion tokens per 86400 seconds (24 hours)"
+				},
+				"completion_tokens_per_month": {
+					"type": "integer",
+					"minimum": 1,
+					"description": "Max completion tokens per 2592000 seconds (30 days)"
+				},
+				"credits_per_minute": {
+					"type": "number",
+					"minimum": 0,
+					"description": "Max credits per 60 seconds (resets at top of minute)"
+				},
+				"credits_per_hour": {
+					"type": "number",
+					"minimum": 0,
+					"description": "Max credits per hour (resets at top of hour)"
+				},
+				"credits_per_day": {
+					"type": "number",
+					"minimum": 0,
+					"description": "Max credits per day (resets at midnight UTC)"
+				},
+				"credits_per_month": {
+					"type": "number",
+					"minimum": 0,
+					"description": "Max credits per month (resets on 1st at 00:00 UTC)"
 				}
 			}
 		}

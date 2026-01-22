@@ -9,10 +9,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Union
 from dotenv import load_dotenv
-import signal
 
 from .registry import ModelRegistry
-from .models import Message
 
 load_dotenv()
 
@@ -136,6 +134,7 @@ async def chat_completions(request: ChatCompletionRequest):
 		provider_instance.reset_retry_count()
 
 		while provider_instance.should_retry_request():
+			api_key = None
 			try:
 				api_key = provider_instance.get_current_api_key()
 
@@ -164,9 +163,21 @@ async def chat_completions(request: ChatCompletionRequest):
 				input_tokens = response.get("usage", {}).get("prompt_tokens", 0)
 				output_tokens = response.get("usage", {}).get("completion_tokens", 0)
 				total_tokens = input_tokens + output_tokens
+			
+				# Calculate credits based on tracker configuration (if needed)
+				# Note: Credits are auto-calculated in RateLimitTracker based on token counts
+				# Pass 0 here - the tracker will calculate from tokens and configured rates
+				credits = 0.0
 
 				# Record metrics (multipliers handled in RateLimitTracker.add_request)
-				provider_instance.record_response(duration, total_tokens, api_key)
+				provider_instance.record_response(
+					duration=duration,
+					tokens=total_tokens,
+					api_key=api_key,
+					prompt_tokens=input_tokens,
+					completion_tokens=output_tokens,
+					credits=credits
+				)
 				provider_instance.mark_api_key_success(api_key)
 				provider_instance.mark_success()
 
@@ -204,7 +215,7 @@ async def chat_completions(request: ChatCompletionRequest):
 	if validation_errors:
 		error_detail = f"Request validation failed: {validation_errors}"
 		raise HTTPException(status_code=400, detail=error_detail)
-	
+
 	error_detail = (
 		f"All providers failed. Last error: {last_error}"
 		if last_error
@@ -254,10 +265,10 @@ async def health_check():
 			"status": "error",
 			"detail": "Registry not initialized"
 		}
-	
+
 	models = registry.list_models()
 	providers_info = []
-	
+
 	for model in models:
 		model_info = {
 			"model_id": model.id,
@@ -274,7 +285,7 @@ async def health_check():
 				provider_info["api_key_count"] = len(pi.api_key_rotation.api_keys)
 			model_info["providers"].append(provider_info)
 		providers_info.append(model_info)
-	
+
 	return {
 		"status": "ok",
 		"registry_initialized": True,

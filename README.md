@@ -80,11 +80,18 @@ models:
 - `multiplier` (optional): How much each item counts toward limits (2.0 = counts as 2x)
 - `token_multiplier` (optional): How much each token counts toward token limits
 - `request_multiplier` (optional): How much each request counts toward request limits
+- `credits_per_token` (optional): Credit cost per token
+- `credits_per_million_tokens` (optional): Credit cost per million tokens
+- `credits_per_request` (optional): Credit cost per request
 - `max_retries` (optional): Retry attempts on failure, default 3
 
 **Rate Limits (inside `rate_limits`):**
 - `requests_per_minute`, `requests_per_hour`, `requests_per_day`, `requests_per_month`
 - `tokens_per_minute`, `tokens_per_hour`, `tokens_per_day`, `tokens_per_month`
+- `prompt_tokens_per_minute`, `prompt_tokens_per_hour`, `prompt_tokens_per_day`, `prompt_tokens_per_month`
+- `completion_tokens_per_minute`, `completion_tokens_per_hour`, `completion_tokens_per_day`, `completion_tokens_per_month`
+- `credits_per_minute`, `credits_per_hour`, `credits_per_day`, `credits_per_month`
+  - Note: Credit limits reset at calendar boundaries (`:00` for minutes, `:00` for hours, midnight for days, 1st of month for months)
 
 ## Rate Limiting
 
@@ -130,6 +137,91 @@ rate_limits:
 - Each key: 100k tokens/day independently
 - Total capacity: 200k tokens/day across both keys
 - If key-1 exhausted, proxy rotates to key-2
+
+**Rate Limits: Global vs Prompt vs Completion**
+
+You can configure rate limits for:
+- `tokens_per_*`: Total tokens (prompt + completion) - global limit
+- `prompt_tokens_per_*`: Prompt tokens only
+- `completion_tokens_per_*`: Completion tokens only
+
+**Example with separate token limits:**
+```yaml
+providers:
+  my_provider:
+    type: openai
+    base_url: https://api.openai.com/v1
+    api_keys:
+      - sk-proj-key
+    rate_limits:
+      requests_per_minute: 3500
+      tokens_per_day: 2000000           # Global total cap
+      prompt_tokens_per_day: 1200000    # Max input tokens
+      completion_tokens_per_day: 800000 # Max output tokens
+```
+
+All limits work with time windows: `_per_minute`, `_per_hour`, `_per_day`, `_per_month`.
+
+**How it works:**
+- Each limit is checked independently (ALL must pass)
+- If you set `tokens_per_day: 1000` and `prompt_tokens_per_day: 600`, both apply
+- `prompt_tokens + completion_tokens` cannot exceed `tokens_per_day`
+- Multipliers work the same way: each token counts multiplied by `token_multiplier`
+
+**Example combining all limits:**
+```yaml
+rate_limits:
+  tokens_per_day: 1000000              # Total budget
+  prompt_tokens_per_day: 700000        # Up to 70% can be prompt
+  completion_tokens_per_day: 500000    # Up to 50% can be completion
+```
+- If 600k prompt + 300k completion used, all limits satisfied (600+300=900 ≤ 1000, 600 ≤ 700, 300 ≤ 500)
+- If 750k prompt + 100k completion used, fails (750 > 700, violates prompt limit)
+
+## Credit-Based Rate Limiting
+
+Credits are an alternative (or complementary) way to enforce resource budgets. You can configure credit costs per token, per million tokens, or per request. Credit limits reset on calendar boundaries (hour, day, month).
+
+**Credit Rates (model-provider instance level):**
+- `credits_per_token`: Credit cost per token (e.g., 0.001 = 0.001 credits per token)
+- `credits_per_million_tokens`: Credit cost per 1M tokens (e.g., 1.0 = 1 credit per million tokens)
+- `credits_per_request`: Credit cost per request (e.g., 5.0 = 5 credits per request)
+
+**Credit Limits (in `rate_limits`):**
+- `credits_per_minute`: Max credits per minute (resets at `:00` seconds each minute)
+- `credits_per_hour`: Max credits per hour (resets at `:00` of each hour)
+- `credits_per_day`: Max credits per day (resets at midnight UTC)
+- `credits_per_month`: Max credits per month (resets on 1st at 00:00 UTC)
+
+**How it works:**
+- Credits are calculated per request based on usage:
+  - If `credits_per_token=0.001` and a request uses 100 tokens, it costs 0.1 credits
+  - If `credits_per_request=5.0`, each request adds 5 credits regardless of tokens
+  - If both are set, they add together
+- Credit usage is tracked in calendar periods (not sliding windows like tokens)
+- When a limit resets, the counter goes to 0
+- If ANY credit limit is exceeded, the key is rate-limited
+
+**Example with credits:**
+```yaml
+models:
+  gpt-4:
+    providers:
+      my_provider:
+        model_id: gpt-4
+        credentials_per_token: 0.002         # 0.002 credits per token
+        credits_per_request: 0.5             # Plus 0.5 per request
+        rate_limits:
+          credits_per_hour: 100.0            # Max 100 credits/hour
+          credits_per_day: 500.0             # Max 500 credits/day
+```
+
+Usage example:
+- Request with 1000 prompt + 500 completion tokens
+- Cost: ((1000 + 500) * 0.002) + 0.5 = 3.5 credits
+- Tracked against hourly and daily limits
+- When the hour resets (at top of hour), hourly counter resets to 0
+- When day resets (at midnight), daily counter resets to 0
 
 ## Model ID Round-Robin
 

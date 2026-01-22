@@ -247,13 +247,58 @@ result = provider.validate_request(messages, "claude-3-opus-20240229")
 print("Valid:", result.is_valid)
 ```
 
+## Rate Limiting with Separate Token Types
+
+The proxy supports granular rate limiting that tracks `prompt_tokens` and `completion_tokens` separately from total tokens. Your provider's response should always include accurate token counts in the `usage` object:
+
+```json
+{
+  "usage": {
+    "prompt_tokens": 150,
+    "completion_tokens": 450,
+    "total_tokens": 600
+  }
+}
+```
+
+When configured with separate limits like `prompt_tokens_per_day` or `completion_tokens_per_day`, the proxy uses these values to enforce rate limits. See the README for configuration examples.
+
+## Credit-Based Rate Limiting
+
+The proxy also supports credit-based budgeting, which is useful for platforms with usage tiers or dollar-based pricing. Credits can be calculated per token, per million tokens, or per request, and limits are enforced at calendar boundaries (minute, hour, day, month).
+
+Configure credits at the model-provider instance level:
+
+```yaml
+models:
+  gpt-4:
+    providers:
+      my_provider:
+        model_id: gpt-4
+        credits_per_token: 0.002              # 0.002 credits per token
+        credits_per_million_tokens: 0.0       # Alternative: per-million pricing
+        credits_per_request: 0.5              # Plus 0.5 per request
+        rate_limits:
+          credits_per_hour: 100.0             # Reset each hour
+          credits_per_day: 500.0              # Reset each day at midnight
+          credits_per_month: 5000.0           # Reset on 1st of month
+```
+
+**Important:** Credit limits reset on calendar boundaries:
+- `credits_per_minute`: Resets at `:00` seconds (top of each minute)
+- `credits_per_hour`: Resets at `:00` (top of each hour)
+- `credits_per_day`: Resets at 00:00 UTC (midnight)
+- `credits_per_month`: Resets on the 1st at 00:00 UTC
+
+This differs from token/request limits which use sliding windows. Credit limits are tracked per calendar period, making them ideal for billing scenarios.
+
 ## Common Pitfalls
 
 1. **Forgetting to set `response["provider"]`** - The client needs to know which provider handled the request
 2. **Not handling missing fields** - Always ensure all required fields exist in the response
 3. **Not raising exceptions on failure** - The proxy won't know to try the next provider
 4. **Parameter mapping differences** - Different APIs use different parameter names (e.g., `max_tokens` vs `max_completion_tokens`)
-5. **Token counting** - Make sure your provider returns `usage.prompt_tokens` and `usage.completion_tokens`
+5. **Token counting** - Make sure your provider returns accurate `usage.prompt_tokens` and `usage.completion_tokens` - these are used for both response reporting and rate limit enforcement
 
 ## Performance Tips
 

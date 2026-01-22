@@ -154,6 +154,17 @@ class ModelRegistry:
 					limits[key] = value
 		return limits
 
+	def _extract_credit_rates(self, config: dict) -> tuple:
+		"""Extract credit rate configuration from instance config.
+		
+		Returns:
+			Tuple of (credits_per_token, credits_per_million_tokens, credits_per_request)
+		"""
+		credits_per_token = config.get("credits_per_token", 0.0)
+		credits_per_million_tokens = config.get("credits_per_million_tokens", 0.0)
+		credits_per_request = config.get("credits_per_request", 0.0)
+		return credits_per_token, credits_per_million_tokens, credits_per_request
+
 	def _ensure_global_trackers(self, api_keys: list) -> None:
 		"""Create global rate limit trackers for API keys if they don't exist."""
 		from .models import RateLimitTracker
@@ -249,6 +260,11 @@ class ModelRegistry:
 					# Set usage multipliers (how much each token/request counts)
 					if token_multiplier != 1.0 or request_multiplier != 1.0:
 						api_key_rotation.set_multipliers(token_multiplier, request_multiplier)
+				
+					# Set credit rates if configured
+					credits_per_token, credits_per_million_tokens, credits_per_request = self._extract_credit_rates(instance_config)
+					if credits_per_token > 0 or credits_per_million_tokens > 0 or credits_per_request > 0:
+						api_key_rotation.set_credit_rates(credits_per_token, credits_per_million_tokens, credits_per_request)
 				elif "api_key" in instance_config:
 					api_key = instance_config.get("api_key")
 					if api_key:
@@ -262,6 +278,11 @@ class ModelRegistry:
 						# Set usage multipliers (how much each token/request counts)
 						if token_multiplier != 1.0 or request_multiplier != 1.0:
 							api_key_rotation.set_multipliers(token_multiplier, request_multiplier)
+					
+						# Set credit rates if configured
+						credits_per_token, credits_per_million_tokens, credits_per_request = self._extract_credit_rates(instance_config)
+						if credits_per_token > 0 or credits_per_million_tokens > 0 or credits_per_request > 0:
+							api_key_rotation.set_credit_rates(credits_per_token, credits_per_million_tokens, credits_per_request)
 
 				pi = ProviderInstance(
 					provider=provider,
