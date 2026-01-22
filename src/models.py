@@ -841,7 +841,8 @@ class Model:
 		# Providers are ranked 0 to N-1 based on their priority value
 		if available:
 			sorted_by_priority = sorted(available, key=lambda pi: pi.priority)
-			priority_rank = {pi: idx for idx, pi in enumerate(sorted_by_priority)}
+			# Use id() to track rank since ProviderInstance isn't hashable
+			priority_rank = {id(pi): idx for idx, pi in enumerate(sorted_by_priority)}
 			
 			# Number of providers determines bonus granularity
 			num_providers = len(available)
@@ -849,7 +850,7 @@ class Model:
 			# Calculate adjusted scores with priority bonuses
 			def score_with_priority(pi: ProviderInstance) -> float:
 				base_score = pi.get_health_score()
-				rank = priority_rank[pi]
+				rank = priority_rank[id(pi)]
 				# Best priority (lowest value) gets highest bonus, worst priority gets negative bonus
 				# Formula: bonus ranges from +(num_providers-1) to -(num_providers-1)
 				priority_bonus = (num_providers - 1) - (2 * rank)
