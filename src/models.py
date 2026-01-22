@@ -806,6 +806,7 @@ class ProviderInstance:
 	def get_stats(self) -> dict:
 		"""Get comprehensive statistics."""
 		return {
+			"provider": self.provider.name,
 			"enabled": self.enabled,
 			"priority": self.priority,
 			"model_ids": self.model_ids,
@@ -814,6 +815,8 @@ class ProviderInstance:
 			"health_score": self.get_health_score(),
 			"avg_response_time": self.speed_tracker.get_average_time(),
 			"p95_response_time": self.speed_tracker.get_percentile_95(),
+			"avg_ttft": self.speed_tracker.get_average_ttft(),
+			"p95_ttft": self.speed_tracker.get_p95_ttft(),
 		}
 
 

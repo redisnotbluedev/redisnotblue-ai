@@ -9,7 +9,7 @@ from typing import Dict, Any
 class GlobalMetrics:
 	"""Track global system metrics."""
 
-	def __init__(self):
+	def __init__(self, on_change=None):
 		self.total_requests: int = 0
 		self.total_tokens: int = 0
 		self.total_prompt_tokens: int = 0
@@ -19,6 +19,7 @@ class GlobalMetrics:
 		self.first_token_times: list = []  # TTFT tracking
 		self.start_time: float = time.time()
 		self.errors_count: int = 0
+		self.on_change = on_change  # Callback when metrics change
 
 	def record_request(self, duration: float, tokens: int = 0, prompt_tokens: int = 0,
 	                   completion_tokens: int = 0, credits: float = 0.0, ttft: float = 0.0) -> None:
@@ -40,9 +41,17 @@ class GlobalMetrics:
 			if len(self.first_token_times) > 1000:
 				self.first_token_times.pop(0)
 
+		# Trigger save callback
+		if self.on_change:
+			self.on_change()
+
 	def record_error(self) -> None:
 		"""Record a failed request."""
 		self.errors_count += 1
+		
+		# Trigger save callback
+		if self.on_change:
+			self.on_change()
 
 	def get_average_response_time(self) -> float:
 		"""Get average response time in seconds."""
@@ -163,6 +172,9 @@ class MetricsPersistence:
 			"circuit_breaker_success_count": provider_instance.circuit_breaker.success_count,
 			"average_response_time": provider_instance.speed_tracker.get_average_time(),
 			"p95_response_time": provider_instance.speed_tracker.get_percentile_95(),
+			"tokens_per_second": provider_instance.speed_tracker.get_tokens_per_second(),
+			"average_ttft": provider_instance.speed_tracker.get_average_ttft(),
+			"p95_ttft": provider_instance.speed_tracker.get_p95_ttft(),
 		}
 
 	def restore_provider_metrics(self, provider_instance, metrics: Dict[str, Any]) -> None:

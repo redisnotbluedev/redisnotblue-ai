@@ -3,20 +3,34 @@
 import asyncio
 import os
 import time
-import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, Union
 from dotenv import load_dotenv
+from pathlib import Path
 
 from .registry import ModelRegistry
 from .metrics import GlobalMetrics
+import json as json_module
 
 load_dotenv()
 
 registry: Optional[ModelRegistry] = None
 global_metrics: Optional[GlobalMetrics] = None
+
+
+def on_metrics_change():
+	"""Callback when metrics change - save to disk immediately."""
+	try:
+		if registry:
+			registry.save_metrics()
+		if global_metrics:
+			registry.metrics.save_global_metrics(global_metrics)
+	except Exception as e:
+		print(f"Error saving metrics on change: {e}")
 
 
 @asynccontextmanager
@@ -26,7 +40,7 @@ async def lifespan(app: FastAPI):
 	try:
 		# Startup
 		registry = ModelRegistry()
-		global_metrics = GlobalMetrics()
+		global_metrics = GlobalMetrics(on_change=on_metrics_change)
 		config_path = os.getenv("CONFIG_PATH", "config/config.yaml")
 		print(f"Loading config from: {config_path}")
 		registry.load_from_config(config_path)
@@ -43,7 +57,7 @@ async def lifespan(app: FastAPI):
 		traceback.print_exc()
 		raise
 	yield
-	# Shutdown - save metrics to disk
+	# Final save on shutdown
 	if registry:
 		registry.save_metrics()
 		print("Metrics saved")
@@ -110,6 +124,51 @@ class ModelListResponse(BaseModel):
 app = FastAPI(title="OpenAI Proxy", lifespan=lifespan)
 
 
+async def _stream_response(response: dict):
+	"""Convert a complete response to SSE streaming format."""
+	choices = response.get("choices", [])
+	if not choices:
+		return
+	
+	content = choices[0].get("message", {}).get("content", "")
+	finish_reason = choices[0].get("finish_reason", "stop")
+	
+	# Stream tokens one by one
+	for char in content:
+		chunk = {
+			"id": response.get("id"),
+			"object": "chat.completion.chunk",
+			"created": response.get("created"),
+			"model": response.get("model"),
+			"choices": [
+				{
+					"index": 0,
+					"delta": {"content": char},
+					"finish_reason": None
+				}
+			]
+		}
+		yield f"data: {json_module.dumps(chunk)}\n\n"
+		await asyncio.sleep(0)
+	
+	# Send final chunk
+	final_chunk = {
+		"id": response.get("id"),
+		"object": "chat.completion.chunk",
+		"created": response.get("created"),
+		"model": response.get("model"),
+		"choices": [
+			{
+				"index": 0,
+				"delta": {},
+				"finish_reason": finish_reason
+			}
+		]
+	}
+	yield f"data: {json_module.dumps(final_chunk)}\n\n"
+	yield "data: [DONE]\n\n"
+
+
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
 	if registry is None:
@@ -171,10 +230,15 @@ async def chat_completions(request: ChatCompletionRequest):
 
 				duration = time.time() - start_time
 
-				# Extract token counts
+				# Extract token counts and TTFT
 				input_tokens = response.get("usage", {}).get("prompt_tokens", 0)
 				output_tokens = response.get("usage", {}).get("completion_tokens", 0)
 				total_tokens = input_tokens + output_tokens
+				ttft = response.get("ttft", 0.0)
+			
+				# Calculate TTFT relative to start if available
+				if ttft and isinstance(ttft, (int, float)):
+					ttft = ttft - start_time if ttft > start_time else 0.0
 
 				# Calculate credits based on tracker configuration (if needed)
 				# Note: Credits are auto-calculated in RateLimitTracker based on token counts
@@ -188,7 +252,8 @@ async def chat_completions(request: ChatCompletionRequest):
 					api_key=api_key,
 					prompt_tokens=input_tokens,
 					completion_tokens=output_tokens,
-					credits=credits
+					credits=credits,
+					ttft=ttft
 				)
 				provider_instance.mark_api_key_success(api_key)
 				provider_instance.mark_success()
@@ -200,10 +265,18 @@ async def chat_completions(request: ChatCompletionRequest):
 						tokens=total_tokens,
 						prompt_tokens=input_tokens,
 						completion_tokens=output_tokens,
-						credits=credits
+						credits=credits,
+						ttft=ttft
 					)
 
-				return response
+				# Return response (streaming or non-streaming based on request)
+				if request.stream:
+					return StreamingResponse(
+						_stream_response(response),
+						media_type="text/event-stream"
+					)
+				else:
+					return response
 
 			except ValueError as e:
 				# Validation error - save it and continue to next provider
@@ -352,3 +425,9 @@ async def health_check():
 			"avg_providers_per_model": round(avg_providers_per_model, 2),
 		},
 	}
+
+
+# Mount static files for dashboard AFTER all API routes
+static_dir = Path(__file__).parent.parent / "static"
+if static_dir.exists():
+	app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")

@@ -1,8 +1,8 @@
 from .openai import OpenAIProvider
-import requests, time, uuid
+import requests, time, uuid, json
 
 class GitHubCopilotProvider(OpenAIProvider):
-	"""Provider for the internal GitHub Copilot API."""
+	"""Provider for the internal GitHub Copilot API with streaming support."""
 
 	def __init__(self, name: str, config: dict):
 		config.setdefault("base_url", "https://api.githubcopilot.com")
@@ -43,7 +43,7 @@ class GitHubCopilotProvider(OpenAIProvider):
 			self.expires_at = data.get("expires_at", -1)
 			self.copilot_key = data.get("token", None)
 			if data.get("sku", "individual") not in ["individual", "free_educational_quota"]:
-				self.base_url = f"https://api.{data.get("sku")}.githubcopilot.com"
+				self.base_url = f"https://api.{data.get('sku')}.githubcopilot.com"
 			return data.get("token", None)
 
 		except requests.exceptions.Timeout:
@@ -54,7 +54,7 @@ class GitHubCopilotProvider(OpenAIProvider):
 			raise Exception(f"GitHub API request error when requesting token renewal: {e}")
 
 	def make_request(self, request_data: dict, api_key: str):
-		"""Make request to GitHub Copilot API."""
+		"""Make streaming request to GitHub Copilot API and collect all chunks."""
 		url = f"{self.base_url}/chat/completions"
 		token = self.get_key(api_key)
 		headers = {
@@ -76,7 +76,8 @@ class GitHubCopilotProvider(OpenAIProvider):
 				url,
 				json=request_data,
 				headers=headers,
-				timeout=self.timeout
+				timeout=self.timeout,
+				stream=True
 			)
 
 			if response.status_code != 200:
@@ -89,10 +90,10 @@ class GitHubCopilotProvider(OpenAIProvider):
 					pass
 
 				raise Exception(
-					f"OpenAI API error {response.status_code}: {error_msg}"
+					f"Copilot API error {response.status_code}: {error_msg}"
 				)
 
-			return response.json()
+			return self._process_stream(response)
 		except requests.exceptions.Timeout:
 			raise Exception(f"Copilot API timeout after {self.timeout}s")
 		except requests.exceptions.ConnectionError as e:
