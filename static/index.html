@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>AI Proxy Dashboard</title>
+	<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+	<div class="container">
+		<header>
+			<h1>🤖 AI Proxy Dashboard</h1>
+			<p class="header-subtitle">Real-time monitoring of LLM provider health and performance</p>
+		</header>
+
+		<div id="error-container"></div>
+
+		<div class="controls">
+			<div class="last-updated">Last updated: <span id="last-updated">loading...</span></div>
+			<button class="refresh-button" onclick="refreshData()">↻ Refresh</button>
+		</div>
+
+		<div class="grid" id="health-cards">
+			<div class="card">
+				<div class="card-title">System Status</div>
+				<div class="card-value" id="system-status">—</div>
+				<div id="system-status-badge"></div>
+			</div>
+			<div class="card">
+				<div class="card-title">Total Requests</div>
+				<div class="card-value" id="total-requests">—</div>
+				<div class="card-subtitle">Since startup</div>
+			</div>
+			<div class="card">
+				<div class="card-title">Error Rate</div>
+				<div class="card-value" id="error-rate">—</div>
+				<div class="card-subtitle" id="error-count"></div>
+			</div>
+			<div class="card">
+				<div class="card-title">Avg Response Time</div>
+				<div class="card-value" id="avg-response">—</div>
+				<div class="card-subtitle" id="p95-response"></div>
+			</div>
+			<div class="card">
+				<div class="card-title">Avg TTFT</div>
+				<div class="card-value" id="avg-ttft">—</div>
+				<div class="card-subtitle" id="p95-ttft"></div>
+			</div>
+			<div class="card">
+				<div class="card-title">Total Tokens</div>
+				<div class="card-value" id="total-tokens">—</div>
+				<div class="card-subtitle" id="token-breakdown"></div>
+			</div>
+		</div>
+
+		<div class="grid">
+			<div class="card">
+				<div class="card-title">Provider Summary</div>
+				<div class="stat-grid">
+					<div class="stat-item">
+						<div class="stat-label">Total Providers</div>
+						<div class="stat-value" id="total-providers">—</div>
+					</div>
+					<div class="stat-item">
+						<div class="stat-label">Enabled</div>
+						<div class="stat-value" id="enabled-providers">—</div>
+					</div>
+					<div class="stat-item">
+						<div class="stat-label">Disabled</div>
+						<div class="stat-value" id="disabled-providers">—</div>
+					</div>
+					<div class="stat-item">
+						<div class="stat-label">Avg Health</div>
+						<div class="stat-value" id="avg-health">—</div>
+					</div>
+				</div>
+			</div>
+			<div class="card">
+				<div class="card-title">Model Coverage</div>
+				<div class="stat-grid">
+					<div class="stat-item">
+						<div class="stat-label">Total Models</div>
+						<div class="stat-value" id="total-models">—</div>
+					</div>
+					<div class="stat-item">
+						<div class="stat-label">Avg Providers/Model</div>
+						<div class="stat-value" id="avg-providers-per-model">—</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<h2 class="section-title">Models</h2>
+		<div id="models-container">
+			<div class="loading">Loading models...</div>
+		</div>
+
+		<h2 class="section-title">Provider Performance</h2>
+		<div id="providers-container">
+			<div class="loading">Loading provider stats...</div>
+		</div>
+	</div>
+
+	<script src="/dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,642 @@
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+	color: #e2e8f0;
+	min-height: 100vh;
+	padding: 20px;
+}
+
+.container {
+	max-width: 1400px;
+	margin: 0 auto;
+}
+
+header {
+	margin-bottom: 40px;
+	border-bottom: 2px solid #334155;
+	padding-bottom: 20px;
+}
+
+h1 {
+	font-size: 32px;
+	font-weight: 700;
+	margin-bottom: 10px;
+	color: #f1f5f9;
+}
+
+.header-subtitle {
+	color: #94a3b8;
+	font-size: 14px;
+}
+
+.grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+	gap: 20px;
+	margin-bottom: 30px;
+}
+
+.card {
+	background: #1e293b;
+	border: 1px solid #334155;
+	border-radius: 8px;
+	padding: 20px;
+	backdrop-filter: blur(10px);
+}
+
+.card-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: #94a3b8;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	margin-bottom: 10px;
+}
+
+.card-value {
+	font-size: 28px;
+	font-weight: 700;
+	color: #f1f5f9;
+	margin-bottom: 5px;
+}
+
+.card-subtitle {
+	font-size: 12px;
+	color: #64748b;
+}
+
+.status-badge {
+	display: inline-block;
+	padding: 4px 12px;
+	border-radius: 4px;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	margin-top: 10px;
+}
+
+.status-healthy {
+	background: rgba(34, 197, 94, 0.1);
+	color: #22c55e;
+	border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.status-degraded {
+	background: rgba(234, 179, 8, 0.1);
+	color: #eab308;
+	border: 1px solid rgba(234, 179, 8, 0.3);
+}
+
+.status-unhealthy {
+	background: rgba(239, 68, 68, 0.1);
+	color: #ef4444;
+	border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.status-down {
+	background: rgba(239, 68, 68, 0.1);
+	color: #ef4444;
+	border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.section-title {
+	font-size: 20px;
+	font-weight: 700;
+	margin: 30px 0 20px 0;
+	color: #f1f5f9;
+	border-bottom: 2px solid #334155;
+	padding-bottom: 10px;
+}
+
+.table-wrapper {
+	overflow-x: auto;
+	border: 1px solid #334155;
+	border-radius: 8px;
+	background: #1e293b;
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 14px;
+}
+
+thead {
+	background: #0f172a;
+	border-bottom: 2px solid #334155;
+}
+
+th {
+	padding: 12px 16px;
+	text-align: left;
+	font-weight: 600;
+	color: #94a3b8;
+	text-transform: uppercase;
+	font-size: 12px;
+	letter-spacing: 0.5px;
+}
+
+td {
+	padding: 12px 16px;
+	border-bottom: 1px solid #334155;
+	color: #cbd5e1;
+}
+
+tr:hover {
+	background: rgba(255, 255, 255, 0.02);
+}
+
+.metric-bar {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.bar-bg {
+	flex: 1;
+	height: 6px;
+	background: #334155;
+	border-radius: 3px;
+	overflow: hidden;
+}
+
+.bar-fill {
+	height: 100%;
+	background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+	border-radius: 3px;
+}
+
+.bar-fill.good {
+	background: linear-gradient(90deg, #22c55e, #16a34a);
+}
+
+.bar-fill.warning {
+	background: linear-gradient(90deg, #eab308, #ca8a04);
+}
+
+.bar-fill.danger {
+	background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+.bar-value {
+	font-weight: 600;
+	min-width: 50px;
+	text-align: right;
+	color: #e2e8f0;
+}
+
+.provider-name {
+	font-weight: 600;
+	color: #f1f5f9;
+}
+
+.model-name {
+	font-weight: 600;
+	color: #f1f5f9;
+}
+
+.enabled-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.enabled-true {
+	background: rgba(34, 197, 94, 0.1);
+	color: #22c55e;
+}
+
+.enabled-false {
+	background: rgba(107, 114, 128, 0.1);
+	color: #9ca3af;
+}
+
+.loading {
+	color: #94a3b8;
+	font-style: italic;
+	padding: 20px;
+	text-align: center;
+}
+
+.error {
+	background: rgba(239, 68, 68, 0.1);
+	border: 1px solid rgba(239, 68, 68, 0.3);
+	color: #fca5a5;
+	padding: 15px;
+	border-radius: 8px;
+	margin-bottom: 20px;
+}
+
+.refresh-button {
+	background: #3b82f6;
+	color: white;
+	border: none;
+	padding: 8px 16px;
+	border-radius: 6px;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+.refresh-button:hover {
+	background: #2563eb;
+}
+
+.refresh-button:active {
+	transform: scale(0.98);
+}
+
+.controls {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 20px;
+}
+
+.last-updated {
+	font-size: 12px;
+	color: #64748b;
+}
+
+.stat-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 15px;
+	margin-top: 10px;
+}
+
+.stat-item {
+	background: rgba(30, 41, 59, 0.5);
+	padding: 12px;
+	border-radius: 6px;
+	border-left: 3px solid #3b82f6;
+}
+
+.stat-label {
+	font-size: 11px;
+	color: #94a3b8;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	margin-bottom: 4px;
+}
+
+.stat-value {
+	font-size: 18px;
+	font-weight: 700;
+	color: #f1f5f9;
+}
+
+.no-data {
+	text-align: center;
+	padding: 40px 20px;
+	color: #64748b;
+}
+```
+
+Now create the JavaScript file:
+
+```
+redisnotblue-ai/static/dashboard.js
+```
+
+```
+const API_BASE = '/v1';
+const REFRESH_INTERVAL = 10000;
+let autoRefreshTimer;
+
+async function fetchJSON(endpoint) {
+	try {
+		const response = await fetch(API_BASE + endpoint);
+		if (!response.ok) throw new Error(`HTTP ${response.status}`);
+		return await response.json();
+	} catch (error) {
+		console.error(`Error fetching ${endpoint}:`, error);
+		showError(`Failed to fetch ${endpoint}: ${error.message}`);
+		return null;
+	}
+}
+
+function showError(message) {
+	const container = document.getElementById('error-container');
+	container.innerHTML = `<div class="error">⚠️ ${message}</div>`;
+	setTimeout(() => {
+		container.innerHTML = '';
+	}, 5000);
+}
+
+function formatNumber(num) {
+	if (num === null || num === undefined) return '—';
+	if (typeof num === 'number' && num > 1000) {
+		return (num / 1000).toFixed(1) + 'k';
+	}
+	return num.toString();
+}
+
+function formatTime(seconds) {
+	if (!seconds) return '—';
+	if (seconds < 1) return (seconds * 1000).toFixed(0) + 'ms';
+	return seconds.toFixed(2) + 's';
+}
+
+function formatPercent(value) {
+	if (value === null || value === undefined) return '—';
+	return value.toFixed(1) + '%';
+}
+
+function getStatusClass(status) {
+	switch (status) {
+		case 'healthy': return 'status-healthy';
+		case 'degraded': return 'status-degraded';
+		case 'unhealthy': return 'status-unhealthy';
+		case 'down': return 'status-down';
+		default: return '';
+	}
+}
+
+function getHealthBarClass(score) {
+	if (score >= 80) return 'good';
+	if (score >= 50) return 'warning';
+	return 'danger';
+}
+
+function updateTimestamp() {
+	const now = new Date();
+	document.getElementById('last-updated').textContent = now.toLocaleTimeString();
+}
+
+async function updateHealth() {
+	const health = await fetchJSON('/health');
+	if (!health) return;
+
+	updateTimestamp();
+
+	const statusEl = document.getElementById('system-status');
+	statusEl.textContent = health.status?.toUpperCase() || '—';
+	
+	const badgeEl = document.getElementById('system-status-badge');
+	badgeEl.innerHTML = `<span class="status-badge ${getStatusClass(health.status)}">● ${health.status || 'unknown'}</span>`;
+
+	const stats = health.global_stats || {};
+	document.getElementById('total-requests').textContent = formatNumber(stats.total_requests);
+	document.getElementById('error-rate').textContent = formatPercent(stats.error_rate_percent);
+	document.getElementById('error-count').textContent = `${stats.total_errors || 0} errors`;
+	
+	document.getElementById('avg-response').textContent = formatTime(stats.avg_response_time_ms ? stats.avg_response_time_ms / 1000 : null);
+	document.getElementById('p95-response').textContent = `p95: ${formatTime(stats.p95_response_time_ms ? stats.p95_response_time_ms / 1000 : null)}`;
+	
+	document.getElementById('avg-ttft').textContent = formatTime(stats.avg_ttft_ms ? stats.avg_ttft_ms / 1000 : null);
+	document.getElementById('p95-ttft').textContent = `p95: ${formatTime(stats.p95_ttft_ms ? stats.p95_ttft_ms / 1000 : null)}`;
+	
+	document.getElementById('total-tokens').textContent = formatNumber(stats.total_tokens);
+	const promptTokens = stats.total_prompt_tokens || 0;
+	const completionTokens = stats.total_completion_tokens || 0;
+	document.getElementById('token-breakdown').textContent = `${formatNumber(promptTokens)} input / ${formatNumber(completionTokens)} output`;
+
+	const providerSummary = health.provider_summary || {};
+	document.getElementById('total-providers').textContent = providerSummary.total_providers || 0;
+	document.getElementById('enabled-providers').textContent = providerSummary.enabled_provider_instances || 0;
+	document.getElementById('disabled-providers').textContent = providerSummary.disabled_provider_instances || 0;
+	document.getElementById('avg-health').textContent = (providerSummary.avg_provider_health_score || 0).toFixed(1);
+
+	document.getElementById('total-models').textContent = formatNumber(stats.total_models || 0);
+	document.getElementById('avg-providers-per-model').textContent = (providerSummary.avg_providers_per_model || 0).toFixed(1);
+}
+
+async function updateModels() {
+	const models = await fetchJSON('/models');
+	if (!models) return;
+
+	const container = document.getElementById('models-container');
+	const modelData = models.data || [];
+
+	if (modelData.length === 0) {
+		container.innerHTML = '<div class="no-data">No models available</div>';
+		return;
+	}
+
+	let html = '<div class="table-wrapper"><table><thead><tr><th>Model ID</th><th>Owner</th><th>Created</th></tr></thead><tbody>';
+	
+	modelData.forEach(model => {
+		html += `<tr>
+			<td class="model-name">${escapeHtml(model.id)}</td>
+			<td>${escapeHtml(model.owned_by)}</td>
+			<td>${new Date(model.created * 1000).toLocaleDateString()}</td>
+		</tr>`;
+	});
+
+	html += '</tbody></table></div>';
+	container.innerHTML = html;
+}
+
+async function updateProviderStats() {
+	const stats = await fetchJSON('/providers/stats');
+	if (!stats) return;
+
+	const container = document.getElementById('providers-container');
+	const modelKeys = Object.keys(stats);
+
+	if (modelKeys.length === 0) {
+		container.innerHTML = '<div class="no-data">No provider statistics available</div>';
+		return;
+	}
+
+	let html = '';
+
+	modelKeys.forEach(modelId => {
+		const modelStats = stats[modelId];
+		const providers = modelStats.providers || [];
+
+		html += `<h3 style="font-size: 16px; margin: 20px 0 10px 0; color: #cbd5e1;">Model: ${escapeHtml(modelId)}</h3>`;
+		html += '<div class="table-wrapper"><table><thead><tr><th>Provider</th><th>Priority</th><th>Enabled</th><th>Health Score</th><th>Avg Response</th><th>P95 Response</th><th>Models</th></tr></thead><tbody>';
+
+		providers.forEach(provider => {
+			const healthScore = provider.health_score || 0;
+			const healthClass = getHealthBarClass(healthScore);
+			const avgResponse = formatTime(provider.avg_response_time);
+			const p95Response = formatTime(provider.p95_response_time);
+
+			html += `<tr>
+				<td class="provider-name">${escapeHtml(provider.provider || '—')}</td>
+				<td>${provider.priority || 0}</td>
+				<td><span class="enabled-badge enabled-${provider.enabled}">
+					${provider.enabled ? '✓ Yes' : '✗ No'}
+				</span></td>
+				<td>
+					<div class="metric-bar">
+						<div class="bar-bg"><div class="bar-fill ${healthClass}" style="width: ${healthScore}%"></div></div>
+						<span class="bar-value">${healthScore.toFixed(0)}</span>
+					</div>
+				</td>
+				<td>${avgResponse}</td>
+				<td>${p95Response}</td>
+				<td>${(provider.model_ids || []).join(', ') || '—'}</td>
+			</tr>`;
+		});
+
+		html += '</tbody></table></div>';
+	});
+
+	container.innerHTML = html;
+}
+
+function escapeHtml(text) {
+	const div = document.createElement('div');
+	div.textContent = text;
+	return div.innerHTML;
+}
+
+async function refreshData() {
+	await Promise.all([updateHealth(), updateModels(), updateProviderStats()]);
+}
+
+function startAutoRefresh() {
+	autoRefreshTimer = setInterval(refreshData, REFRESH_INTERVAL);
+}
+
+function stopAutoRefresh() {
+	clearInterval(autoRefreshTimer);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+	refreshData();
+	startAutoRefresh();
+});
+
+document.addEventListener('visibilitychange', () => {
+	if (document.hidden) {
+		stopAutoRefresh();
+	} else {
+		refreshData();
+		startAutoRefresh();
+	}
+});
+```
+
+Now update the HTML file to reference the external CSS and JS:
+
+```
+redisnotblue-ai/static/index.html
+```
+
+```
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>AI Proxy Dashboard</title>
+	<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+	<div class="container">
+		<header>
+			<h1>🤖 AI Proxy Dashboard</h1>
+			<p class="header-subtitle">Real-time monitoring of LLM provider health and performance</p>
+		</header>
+
+		<div id="error-container"></div>
+
+		<div class="controls">
+			<div class="last-updated">Last updated: <span id="last-updated">loading...</span></div>
+			<button class="refresh-button" onclick="refreshData()">↻ Refresh</button>
+		</div>
+
+		<div class="grid" id="health-cards">
+			<div class="card">
+				<div class="card-title">System Status</div>
+				<div class="card-value" id="system-status">—</div>
+				<div id="system-status-badge"></div>
+			</div>
+			<div class="card">
+				<div class="card-title">Total Requests</div>
+				<div class="card-value" id="total-requests">—</div>
+				<div class="card-subtitle">Since startup</div>
+			</div>
+			<div class="card">
+				<div class="card-title">Error Rate</div>
+				<div class="card-value" id="error-rate">—</div>
+				<div class="card-subtitle" id="error-count"></div>
+			</div>
+			<div class="card">
+				<div class="card-title">Avg Response Time</div>
+				<div class="card-value" id="avg-response">—</div>
+				<div class="card-subtitle" id="p95-response"></div>
+			</div>
+			<div class="card">
+				<div class="card-title">Avg TTFT</div>
+				<div class="card-value" id="avg-ttft">—</div>
+				<div class="card-subtitle" id="p95-ttft"></div>
+			</div>
+			<div class="card">
+				<div class="card-title">Total Tokens</div>
+				<div class="card-value" id="total-tokens">—</div>
+				<div class="card-subtitle" id="token-breakdown"></div>
+			</div>
+		</div>
+
+		<div class="grid">
+			<div class="card">
+				<div class="card-title">Provider Summary</div>
+				<div class="stat-grid">
+					<div class="stat-item">
+						<div class="stat-label">Total Providers</div>
+						<div class="stat-value" id="total-providers">—</div>
+					</div>
+					<div class="stat-item">
+						<div class="stat-label">Enabled</div>
+						<div class="stat-value" id="enabled-providers">—</div>
+					</div>
+					<div class="stat-item">
+						<div class="stat-label">Disabled</div>
+						<div class="stat-value" id="disabled-providers">—</div>
+					</div>
+					<div class="stat-item">
+						<div class="stat-label">Avg Health</div>
+						<div class="stat-value" id="avg-health">—</div>
+					</div>
+				</div>
+			</div>
+			<div class="card">
+				<div class="card-title">Model Coverage</div>
+				<div class="stat-grid">
+					<div class="stat-item">
+						<div class="stat-label">Total Models</div>
+						<div class="stat-value" id="total-models">—</div>
+					</div>
+					<div class="stat-item">
+						<div class="stat-label">Avg Providers/Model</div>
+						<div class="stat-value" id="avg-providers-per-model">—</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<h2 class="section-title">Models</h2>
+		<div id="models-container">
+			<div class="loading">Loading models...</div>
+		</div>
+
+		<h2 class="section-title">Provider Performance</h2>
+		<div id="providers-container">
+			<div class="loading">Loading provider stats...</div>
+		</div>
+	</div>
+
+	<script src="/dashboard.js"></script>
+</body>
+</html>
+```
+
+Done! Now you have:
+- `static/index.html` - Clean HTML structure
+- `static/style.css` - All styling (tabs, no spaces)
+- `static/dashboard.js` - All JavaScript logic (tabs, no spaces)
