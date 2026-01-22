@@ -44,6 +44,46 @@
 					"api_key": {
 						"type": "string",
 						"description": "Single API key for this provider (alternative to api_keys array)"
+					},
+					"credits_gain_per_minute": {
+						"type": "number",
+						"minimum": 0,
+						"description": "Credits gained per minute for this provider (provider-level configuration)"
+					},
+					"credits_gain_per_hour": {
+						"type": "number",
+						"minimum": 0,
+						"description": "Credits gained per hour for this provider (provider-level configuration)"
+					},
+					"credits_gain_per_day": {
+						"type": "number",
+						"minimum": 0,
+						"description": "Credits gained per day for this provider (provider-level configuration)"
+					},
+					"credits_gain_per_month": {
+						"type": "number",
+						"minimum": 0,
+						"description": "Credits gained per month for this provider (provider-level configuration)"
+					},
+					"credits_max_per_minute": {
+						"type": "number",
+						"minimum": 0,
+						"description": "Maximum credits that can be accumulated per minute for this provider (defaults to credits_gain_per_minute)"
+					},
+					"credits_max_per_hour": {
+						"type": "number",
+						"minimum": 0,
+						"description": "Maximum credits that can be accumulated per hour for this provider (defaults to credits_gain_per_hour)"
+					},
+					"credits_max_per_day": {
+						"type": "number",
+						"minimum": 0,
+						"description": "Maximum credits that can be accumulated per day for this provider (defaults to credits_gain_per_day)"
+					},
+					"credits_max_per_month": {
+						"type": "number",
+						"minimum": 0,
+						"description": "Maximum credits that can be accumulated per month for this provider (defaults to credits_gain_per_month)"
 					}
 				}
 			}

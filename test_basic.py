@@ -4,19 +4,23 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from models import Message, Model, ProviderInstance
-from providers.base import Provider
-from registry import ModelRegistry
+from src.models import Model, ProviderInstance
+from src.providers.base import Provider, TransformedRequest, TransformedResponse
+from src.registry import ModelRegistry
 import time
 
 
 class MockProvider(Provider):
     """Mock provider for testing."""
 
-    def translate_request(self, messages: list[dict], model_id: str, **kwargs) -> dict:
-        return {"messages": messages, "model": model_id, **kwargs}
+    def translate_request(self, messages: list[dict], model_id: str, **kwargs) -> TransformedRequest:
+        return TransformedRequest(
+            data={"messages": messages, "model": model_id, **kwargs},
+            original_model_id=model_id,
+            provider_model_id=model_id
+        )
 
-    def make_request(self, request_data: dict) -> dict:
+    def make_request(self, request_data: dict, api_key: str) -> dict:
         return {
             "id": "test-123",
             "object": "chat.completion",
@@ -37,8 +41,12 @@ class MockProvider(Provider):
             }
         }
 
-    def translate_response(self, response_data: dict) -> dict:
-        return response_data
+    def translate_response(self, response_data: dict, original_request: dict) -> TransformedResponse:
+        return TransformedResponse(
+            data=response_data,
+            provider_name="mock",
+            original_request=original_request
+        )
 
 
 def test_provider_instance():
@@ -49,7 +57,7 @@ def test_provider_instance():
     pi = ProviderInstance(
         provider=provider,
         priority=0,
-        model_id="test-model",
+        model_ids=["test-model"],
         enabled=True
     )
 
@@ -86,8 +94,8 @@ def test_model():
     provider1 = MockProvider("provider1", {})
     provider2 = MockProvider("provider2", {})
 
-    pi1 = ProviderInstance(provider=provider1, priority=0, model_id="model-1")
-    pi2 = ProviderInstance(provider=provider2, priority=1, model_id="model-1")
+    pi1 = ProviderInstance(provider=provider1, priority=0, model_ids=["model-1"])
+    pi2 = ProviderInstance(provider=provider2, priority=1, model_ids=["model-1"])
 
     model = Model(id="gpt-4", provider_instances=[pi1, pi2])
 
@@ -125,6 +133,7 @@ def test_mock_provider():
     response = provider.chat_completion(
         messages=messages,
         model_id="test-model",
+        api_key="test-key",
         temperature=0.7,
         max_tokens=100
     )
@@ -150,13 +159,13 @@ def test_registry():
     assert registry.providers["test-provider"] == provider
 
     # Create and register a model
-    pi = ProviderInstance(provider=provider, priority=0, model_id="test-model")
+    pi = ProviderInstance(provider=provider, priority=0, model_ids=["test-model"])
     model = Model(id="test-model", provider_instances=[pi])
     registry.register_model(model)
 
     # Test get_model
     retrieved = registry.get_model("test-model")
-    assert retrieved.id == "test-model"
+    assert retrieved.id == "test-model"  # type: ignore
 
     # Test list_models
     models = registry.list_models()
@@ -171,44 +180,53 @@ def test_failover():
     print("Testing failover behavior...")
 
     class FailingProvider(Provider):
-        def __init__(self, name, config, should_fail=False):
-            super().__init__(name, config)
-            self.should_fail = should_fail
+            def __init__(self, name, config, should_fail=False):
+                super().__init__(name, config)
+                self.should_fail = should_fail
 
-        def translate_request(self, messages, model_id, **kwargs):
-            return {"messages": messages, "model": model_id}
+            def translate_request(self, messages, model_id, **kwargs):
+                return TransformedRequest(
+                    data={"messages": messages, "model": model_id},
+                    original_model_id=model_id,
+                    provider_model_id=model_id
+                )
 
-        def make_request(self, request_data):
-            if self.should_fail:
-                raise Exception("Provider failed")
-            return {
-                "id": "success",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": "test",
-                "choices": [{
-                    "index": 0,
-                    "message": {"role": "assistant", "content": "Success"},
-                    "finish_reason": "stop"
-                }],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
-            }
+            def make_request(self, request_data, api_key):
+                if self.should_fail:
+                    raise Exception("Provider failed")
+                return {
+                    "id": "success",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": "test",
+                    "choices": [{
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "Success"},
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+                }
 
-        def translate_response(self, response_data):
-            return response_data
+            def translate_response(self, response_data, original_request):
+                return TransformedResponse(
+                    data=response_data,
+                    provider_name=self.name,
+                    original_request=original_request
+                )
 
     # Create providers
     failing_provider = FailingProvider("failing", {}, should_fail=True)
     working_provider = FailingProvider("working", {}, should_fail=False)
 
     # Create model with both providers
-    pi_fail = ProviderInstance(provider=failing_provider, priority=0, model_id="test")
-    pi_work = ProviderInstance(provider=working_provider, priority=1, model_id="test")
-    model = Model(id="test", provider_instances=[pi_fail, pi_work])
+    pi_fail = ProviderInstance(provider=failing_provider, priority=0, model_ids=["test"])
+    pi_work = ProviderInstance(provider=working_provider, priority=1, model_ids=["test"])
+    _model = Model(id="test", provider_instances=[pi_fail, pi_work])
 
     # First call should fail on first provider, succeed on second
+    messages = [{"role": "user", "content": "test"}]
     try:
-        response = pi_fail.provider.chat_completion([], "test")
+        response = pi_fail.provider.chat_completion(messages, "test", "test-key")
         assert False, "Should have raised exception"
     except Exception:
         pass
@@ -216,7 +234,7 @@ def test_failover():
     pi_fail.mark_failure()
 
     # Second provider should work
-    response = pi_work.provider.chat_completion([], "test")
+    response = pi_work.provider.chat_completion(messages, "test", "test-key")
     assert response["id"] == "success"
     pi_work.mark_success()
 

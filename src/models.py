@@ -17,73 +17,94 @@ class Message:
 
 @dataclass
 class RateLimitTracker:
-	"""Tracks rate limiting and usage for an API key with flexible time periods."""
-	limits: dict = field(default_factory=dict)  # {"requests_per_minute": 3500, "tokens_per_hour": 90000, "credits_per_day": 1000, ...}
-	requests: List[float] = field(default_factory=list)
-	token_usage: List[tuple] = field(default_factory=list)  # Total tokens (prompt + completion)
-	prompt_token_usage: List[tuple] = field(default_factory=list)  # Prompt tokens only
-	completion_token_usage: List[tuple] = field(default_factory=list)  # Completion tokens only
-	credit_usage: List[tuple] = field(default_factory=list)  # (timestamp, credits) - for time-window tracking
-	calendar_credits: dict = field(default_factory=dict)  # {period: credits_used} for calendar-based resets
+	"""Tracks rate limiting and usage for an API key with calendar-based periods."""
+	limits: dict = field(default_factory=dict)  # {"requests_per_minute": 3500, "tokens_per_day": 90000, "credits_per_day": 1000, ...}
+	calendar_usage: dict = field(default_factory=dict)  # {period: count} for requests/tokens with calendar resets
 	calendar_reset_times: dict = field(default_factory=dict)  # {period: next_reset_timestamp}
 	token_multiplier: float = 1.0  # How much each token counts (e.g., 2.0 = counts as 2x)
 	request_multiplier: float = 1.0  # How much each request counts (e.g., 2.0 = counts as 2x)
 	credits_per_token: float = 0.0  # How many credits per token (0 = disabled)
 	credits_per_million_tokens: float = 0.0  # How many credits per million tokens (0 = disabled)
 	credits_per_request: float = 0.0  # How many credits per request (0 = disabled)
+	credit_gains: dict = field(default_factory=dict)  # {"minute": 100, "hour": 1000, ...} - credits gained per interval (provider-level)
+	credit_maxes: dict = field(default_factory=dict)  # {"minute": 100, "hour": 1000, ...} - max credits that can accumulate (provider-level)
+	credit_balance: dict = field(default_factory=dict)  # {"minute": 50.0, "hour": 500.0, ...} - current credit balance per interval
 
 	def add_request(self, tokens: int = 0, prompt_tokens: int = 0, completion_tokens: int = 0, credits: float = 0.0) -> None:
-		"""Record a request. Applies multipliers to token/request counting.
+		"""Record a request with calendar-based period tracking.
 		
 		Args:
 			tokens: Total tokens (legacy, used if prompt_tokens/completion_tokens not provided)
 			prompt_tokens: Number of prompt tokens
 			completion_tokens: Number of completion tokens
-			credits: Credits used (pre-calculated, or will be calculated from tokens)
+			credits: Pre-calculated credits (optional, will be calculated from tokens if not provided)
 		"""
 		current_time = time.time()
-		# Apply request multiplier
-		for _ in range(int(self.request_multiplier)):
-			self.requests.append(current_time)
-		if len(self.requests) > 1000:
-			self.requests.pop(0)
+		now = datetime.fromtimestamp(current_time, tz=timezone.utc)
 		
-		# Calculate total tokens for credit computation
-		total_tokens = 0
-		
-		# Track tokens
+		# Calculate tokens
 		if prompt_tokens > 0 or completion_tokens > 0:
-			# Use separate prompt/completion tracking
-			if prompt_tokens > 0:
-				counted_prompt = int(prompt_tokens * self.token_multiplier)
-				self.prompt_token_usage.append((current_time, counted_prompt))
-				if len(self.prompt_token_usage) > 1000:
-					self.prompt_token_usage.pop(0)
-			
-			if completion_tokens > 0:
-				counted_completion = int(completion_tokens * self.token_multiplier)
-				self.completion_token_usage.append((current_time, counted_completion))
-				if len(self.completion_token_usage) > 1000:
-					self.completion_token_usage.pop(0)
-			
-			# Also track total for legacy limits
-			total = prompt_tokens + completion_tokens
-			if total > 0:
-				counted_total = int(total * self.token_multiplier)
-				self.token_usage.append((current_time, counted_total))
-				if len(self.token_usage) > 1000:
-					self.token_usage.pop(0)
-				total_tokens = counted_total
+			total_tokens = prompt_tokens + completion_tokens
+			counted_prompt = int(prompt_tokens * self.token_multiplier)
+			counted_completion = int(completion_tokens * self.token_multiplier)
+			counted_total = int(total_tokens * self.token_multiplier)
 		elif tokens > 0:
-			# Legacy: use total tokens parameter
-			counted_tokens = int(tokens * self.token_multiplier)
-			self.token_usage.append((current_time, counted_tokens))
-			if len(self.token_usage) > 1000:
-				self.token_usage.pop(0)
-			total_tokens = counted_tokens
+			counted_total = int(tokens * self.token_multiplier)
+			counted_prompt = 0
+			counted_completion = 0
+		else:
+			counted_total = 0
+			counted_prompt = 0
+			counted_completion = 0
 		
-		# Track credits
-		self._record_credits(current_time, total_tokens, credits)
+		# Calculate requests
+		counted_requests = int(self.request_multiplier)
+		
+		# Calculate credits
+		if credits <= 0:
+			if counted_total > 0:
+				if self.credits_per_token > 0:
+					credits = counted_total * self.credits_per_token
+				elif self.credits_per_million_tokens > 0:
+					credits = (counted_total / 1_000_000) * self.credits_per_million_tokens
+			if self.credits_per_request > 0:
+				credits += self.credits_per_request
+		
+		# Update calendar usage for all periods
+		for limit_key in self.limits.keys():
+			if "_per_" not in limit_key:
+				continue
+			
+			parts = limit_key.split("_per_")
+			if len(parts) != 2:
+				continue
+			
+			limit_type, period = parts
+			if period not in ("minute", "hour", "day", "month"):
+				continue
+			
+			# Initialize period if needed
+			if period not in self.calendar_usage:
+				self.calendar_usage[period] = {"requests": 0, "tokens": 0, "prompt_tokens": 0, "completion_tokens": 0, "credits": 0.0}
+				self.calendar_reset_times[period] = self._get_calendar_reset_time(period, now).timestamp()
+			
+			# Reset if needed
+			if current_time >= self.calendar_reset_times[period]:
+				self.calendar_usage[period] = {"requests": 0, "tokens": 0, "prompt_tokens": 0, "completion_tokens": 0, "credits": 0.0}
+				next_reset = self._get_calendar_reset_time(period, datetime.fromtimestamp(current_time, tz=timezone.utc))
+				self.calendar_reset_times[period] = next_reset.timestamp()
+			
+			# Add usage
+			if limit_type == "requests":
+				self.calendar_usage[period]["requests"] += counted_requests
+			elif limit_type == "tokens":
+				self.calendar_usage[period]["tokens"] += counted_total
+			elif limit_type == "prompt_tokens":
+				self.calendar_usage[period]["prompt_tokens"] += counted_prompt
+			elif limit_type == "completion_tokens":
+				self.calendar_usage[period]["completion_tokens"] += counted_completion
+			elif limit_type == "credits":
+				self.calendar_usage[period]["credits"] += credits
 
 	def _get_time_window_seconds(self, period: str) -> int:
 		"""Get the time window in seconds for a period."""
@@ -100,23 +121,12 @@ class RateLimitTracker:
 		current_time = time.time()
 		return sum(1 for t in items if current_time - t < window_seconds)
 
-	def _count_tokens_in_window(self, window_seconds: int) -> int:
-		"""Count total tokens used in the specified time window."""
-		current_time = time.time()
-		return sum(tokens for t, tokens in self.token_usage if current_time - t < window_seconds)
 
-	def _count_prompt_tokens_in_window(self, window_seconds: int) -> int:
-		"""Count prompt tokens used in the specified time window."""
-		current_time = time.time()
-		return sum(tokens for t, tokens in self.prompt_token_usage if current_time - t < window_seconds)
-
-	def _count_completion_tokens_in_window(self, window_seconds: int) -> int:
-		"""Count completion tokens used in the specified time window."""
-		current_time = time.time()
-		return sum(tokens for t, tokens in self.completion_token_usage if current_time - t < window_seconds)
 
 	def is_rate_limited(self) -> bool:
 		"""Check if rate limited by any configured limit."""
+		current_time = time.time()
+		
 		for limit_key, limit_value in self.limits.items():
 			if "_per_" not in limit_key:
 				continue
@@ -126,39 +136,42 @@ class RateLimitTracker:
 				continue
 
 			limit_type, period = parts
-			window_seconds = self._get_time_window_seconds(period)
-
+			if period not in ("minute", "hour", "day", "month"):
+				continue
+			
+			# Check if reset needed
+			if period in self.calendar_reset_times and current_time >= self.calendar_reset_times[period]:
+				now = datetime.fromtimestamp(current_time, tz=timezone.utc)
+				self.calendar_usage[period] = {"requests": 0, "tokens": 0, "prompt_tokens": 0, "completion_tokens": 0, "credits": 0.0}
+				next_reset = self._get_calendar_reset_time(period, now)
+				self.calendar_reset_times[period] = next_reset.timestamp()
+			
+			# Get current usage
+			if period not in self.calendar_usage:
+				continue
+			
 			if limit_type == "requests":
-				count = self._count_in_window(self.requests, window_seconds)
-				if count >= limit_value:
-					return True
-
+				count = self.calendar_usage[period]["requests"]
 			elif limit_type == "tokens":
-				count = self._count_tokens_in_window(window_seconds)
-				if count >= limit_value:
-					return True
-
+				count = self.calendar_usage[period]["tokens"]
 			elif limit_type == "prompt_tokens":
-				count = self._count_prompt_tokens_in_window(window_seconds)
-				if count >= limit_value:
-					return True
-
+				count = self.calendar_usage[period]["prompt_tokens"]
 			elif limit_type == "completion_tokens":
-				count = self._count_completion_tokens_in_window(window_seconds)
-				if count >= limit_value:
-					return True
-
+				count = self.calendar_usage[period]["completion_tokens"]
 			elif limit_type == "credits":
-				# Use calendar-based resets for credit limits
-				count = self._get_calendar_credits(period)
-				if count >= limit_value:
-					return True
+				count = self.calendar_usage[period]["credits"]
+			else:
+				continue
+			
+			if count >= limit_value:
+				return True
 
 		return False
 
 	def get_usage_stats(self) -> dict:
 		"""Get current usage statistics across all configured limits."""
 		stats = {}
+		current_time = time.time()
 
 		for limit_key, limit_value in self.limits.items():
 			if "_per_" not in limit_key:
@@ -169,27 +182,35 @@ class RateLimitTracker:
 				continue
 
 			limit_type, period = parts
-			window_seconds = self._get_time_window_seconds(period)
-
+			if period not in ("minute", "hour", "day", "month"):
+				continue
+			
+			# Check if reset needed
+			if period in self.calendar_reset_times and current_time >= self.calendar_reset_times[period]:
+				now = datetime.fromtimestamp(current_time, tz=timezone.utc)
+				self.calendar_usage[period] = {"requests": 0, "tokens": 0, "prompt_tokens": 0, "completion_tokens": 0, "credits": 0.0}
+				next_reset = self._get_calendar_reset_time(period, now)
+				self.calendar_reset_times[period] = next_reset.timestamp()
+			
+			# Get current usage
+			if period not in self.calendar_usage:
+				stats[limit_key] = {"used": 0, "limit": limit_value}
+				continue
+			
 			if limit_type == "requests":
-				count = self._count_in_window(self.requests, window_seconds)
-				stats[limit_key] = {"used": count, "limit": limit_value}
-
+				count = self.calendar_usage[period]["requests"]
 			elif limit_type == "tokens":
-				count = self._count_tokens_in_window(window_seconds)
-				stats[limit_key] = {"used": count, "limit": limit_value}
-
+				count = self.calendar_usage[period]["tokens"]
 			elif limit_type == "prompt_tokens":
-				count = self._count_prompt_tokens_in_window(window_seconds)
-				stats[limit_key] = {"used": count, "limit": limit_value}
-
+				count = self.calendar_usage[period]["prompt_tokens"]
 			elif limit_type == "completion_tokens":
-				count = self._count_completion_tokens_in_window(window_seconds)
-				stats[limit_key] = {"used": count, "limit": limit_value}
-
+				count = self.calendar_usage[period]["completion_tokens"]
 			elif limit_type == "credits":
-				count = self._get_calendar_credits(period)
-				stats[limit_key] = {"used": count, "limit": limit_value}
+				count = self.calendar_usage[period]["credits"]
+			else:
+				continue
+			
+			stats[limit_key] = {"used": count, "limit": limit_value}
 
 		return stats
 
@@ -219,71 +240,6 @@ class RateLimitTracker:
 			else:
 				return now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
 		return now
-	
-	def _record_credits(self, current_time: float, tokens: int, credits_param: float = 0.0) -> None:
-		"""Record credit usage based on configuration."""
-		credits = credits_param  # Use pre-calculated credits if provided
-		
-		# Calculate credits from token-based rates if not provided
-		if credits_param <= 0 and tokens > 0:
-			if self.credits_per_token > 0:
-				credits = tokens * self.credits_per_token
-			elif self.credits_per_million_tokens > 0:
-				credits = (tokens / 1_000_000) * self.credits_per_million_tokens
-		
-		# Add request-based credits
-		if self.credits_per_request > 0:
-			credits += self.credits_per_request
-		
-		if credits > 0:
-			# Track for sliding window limits (like credits_per_minute)
-			self.credit_usage.append((current_time, credits))
-			if len(self.credit_usage) > 1000:
-				self.credit_usage.pop(0)
-			
-			# Track for calendar-based limits
-			now = datetime.now(timezone.utc)
-			for limit_key in self.limits.keys():
-				if not limit_key.startswith("credits_per_"):
-					continue
-				
-				period = limit_key.replace("credits_per_", "")
-				if period not in ("minute", "hour", "day", "month"):
-					continue
-				
-				# Initialize or check reset
-				if period not in self.calendar_credits:
-					self.calendar_credits[period] = 0.0
-					self.calendar_reset_times[period] = self._get_calendar_reset_time(period, now).timestamp()
-				
-				# Reset if needed
-				if current_time >= self.calendar_reset_times[period]:
-					self.calendar_credits[period] = 0.0
-					next_reset = self._get_calendar_reset_time(period, datetime.fromtimestamp(current_time, tz=timezone.utc))
-					self.calendar_reset_times[period] = next_reset.timestamp()
-				
-				# Add to current period
-				self.calendar_credits[period] += credits
-	
-	def _count_credits_in_window(self, window_seconds: int) -> float:
-		"""Count credits used in the specified time window."""
-		current_time = time.time()
-		return sum(credits for t, credits in self.credit_usage if current_time - t < window_seconds)
-	
-	def _get_calendar_credits(self, period: str) -> float:
-		"""Get credits used in current calendar period."""
-		if period not in self.calendar_credits:
-			return 0.0
-		
-		# Check if reset is needed
-		current_time = time.time()
-		if current_time >= self.calendar_reset_times.get(period, 0):
-			now = datetime.fromtimestamp(current_time, tz=timezone.utc)
-			self.calendar_credits[period] = 0.0
-			next_reset = self._get_calendar_reset_time(period, now)
-			self.calendar_reset_times[period] = next_reset.timestamp()
-		
-		return self.calendar_credits[period]
 
 	def time_until_available(self) -> float:
 		"""Seconds until next request can be made (based on first limit hit)."""
@@ -293,32 +249,97 @@ class RateLimitTracker:
 		min_time = float('inf')
 		current_time = time.time()
 
-		for limit_key, limit_value in self.limits.items():
-			if "_per_" not in limit_key:
-				continue
-
-			parts = limit_key.split("_per_")
-			if len(parts) != 2:
-				continue
-
-			limit_type, period = parts
-			window_seconds = self._get_time_window_seconds(period)
-
-			if limit_type == "requests":
-				count = self._count_in_window(self.requests, window_seconds)
-				if count >= limit_value and self.requests:
-					oldest = min(self.requests)
-					time_to_available = max(0, window_seconds - (current_time - oldest))
-					min_time = min(min_time, time_to_available)
-
-			elif limit_type == "tokens":
-				count = self._count_tokens_in_window(window_seconds)
-				if count >= limit_value and self.token_usage:
-					oldest = min(t for t, _ in self.token_usage)
-					time_to_available = max(0, window_seconds - (current_time - oldest))
-					min_time = min(min_time, time_to_available)
+		for period, reset_time in self.calendar_reset_times.items():
+			time_to_reset = max(0, reset_time - current_time)
+			if time_to_reset > 0:
+				min_time = min(min_time, time_to_reset)
 
 		return max(0, min_time if min_time != float('inf') else 0)
+
+	def set_credit_gain_and_max(self, credit_gains: dict, credit_maxes: dict) -> None:
+		"""Set provider-level credit gain rates and max balances.
+		
+		Args:
+			credit_gains: Dict of {"minute": X, "hour": Y, "day": Z, "month": W}
+			credit_maxes: Dict of max credits per interval; if not specified, defaults to gain amount
+		"""
+		self.credit_gains = dict(credit_gains) if credit_gains else {}
+		
+		# Set maxes to equal gains by default
+		self.credit_maxes = {}
+		for period in self.credit_gains:
+			self.credit_maxes[period] = credit_maxes.get(period, self.credit_gains[period])
+		
+		# Initialize balances to max (start fully charged)
+		self.credit_balance = dict(self.credit_maxes)
+
+	def update_credit_balance(self) -> None:
+		"""Update credit balances by resetting on period boundaries.
+		
+		This should be called periodically (e.g., at start of each request) to
+		check if a new period has started and reset the balance if needed.
+		"""
+		current_time = time.time()
+		now = datetime.fromtimestamp(current_time, tz=timezone.utc)
+		
+		for period in self.credit_gains:
+			gain_amount = self.credit_gains[period]
+			max_amount = self.credit_maxes.get(period, gain_amount)
+			
+			# Initialize period tracking if needed
+			if period not in self.calendar_reset_times:
+				self.calendar_reset_times[period] = self._get_calendar_reset_time(period, now).timestamp()
+				self.credit_balance[period] = max_amount
+			
+			# Check if reset needed (new period started)
+			if current_time >= self.calendar_reset_times[period]:
+				# New period started, reset balance to max (full credits available for new period)
+				self.credit_balance[period] = max_amount
+				next_reset = self._get_calendar_reset_time(period, datetime.fromtimestamp(current_time, tz=timezone.utc))
+				self.calendar_reset_times[period] = next_reset.timestamp()
+
+	def has_sufficient_credits(self, required_credits: float) -> bool:
+		"""Check if there are sufficient credits for a request.
+		
+		Args:
+			required_credits: Number of credits needed
+		
+		Returns:
+			True if sufficient credits across all intervals, False otherwise
+		"""
+		if not self.credit_gains:  # No credit limits configured
+			return True
+		
+		self.update_credit_balance()
+		
+		# Check if any single period would be exhausted
+		for period in self.credit_gains:
+			balance = self.credit_balance.get(period, 0)
+			if balance < required_credits:
+				return False
+		
+		return True
+
+	def spend_credits(self, amount: float) -> None:
+		"""Spend credits from the balance across all intervals.
+		
+		Args:
+			amount: Number of credits to spend
+		"""
+		if not self.credit_gains:
+			return
+		
+		for period in self.credit_balance:
+			self.credit_balance[period] = max(0, self.credit_balance[period] - amount)
+
+	def get_credit_balance(self) -> dict:
+		"""Get current credit balance across all periods.
+		
+		Returns:
+			Dict of {"minute": X, "hour": Y, ...} with current balances
+		"""
+		self.update_credit_balance()
+		return dict(self.credit_balance)
 
 
 @dataclass
@@ -447,8 +468,22 @@ class ApiKeyRotation:
 			self.rate_limiters[key].credits_per_million_tokens = credits_per_million_tokens
 			self.rate_limiters[key].credits_per_request = credits_per_request
 
-	def get_next_key(self) -> Optional[str]:
-		"""Get the next available API key using round-robin."""
+	def set_credit_gain_and_max(self, credit_gains: dict, credit_maxes: dict) -> None:
+		"""Set provider-level credit gain rates and max balances for all API keys.
+		
+		Args:
+			credit_gains: Dict of {"minute": X, "hour": Y, "day": Z, "month": W}
+			credit_maxes: Dict of max credits per interval; if not specified, defaults to gain amount
+		"""
+		for key in self.api_keys:
+			self.rate_limiters[key].set_credit_gain_and_max(credit_gains, credit_maxes)
+
+	def get_next_key(self, required_credits: float = 0.0) -> Optional[str]:
+		"""Get the next available API key using round-robin.
+		
+		Args:
+			required_credits: Credits needed for the request (optional)
+		"""
 		if not self.api_keys:
 			raise ValueError("No API keys configured")
 
@@ -456,7 +491,9 @@ class ApiKeyRotation:
 
 		available_keys = [
 			key for key in self.api_keys
-			if self.disabled_keys.get(key) is None and not self.rate_limiters[key].is_rate_limited()
+			if self.disabled_keys.get(key) is None 
+			and not self.rate_limiters[key].is_rate_limited()
+			and (required_credits == 0.0 or self.rate_limiters[key].has_sufficient_credits(required_credits))
 		]
 
 		if not available_keys:
@@ -503,6 +540,9 @@ class ApiKeyRotation:
 		"""
 		if api_key and api_key in self.rate_limiters:
 			self.rate_limiters[api_key].add_request(tokens, prompt_tokens, completion_tokens, credits)
+			# Spend credits if configured
+			if credits > 0:
+				self.rate_limiters[api_key].spend_credits(credits)
 
 	def _check_cooldowns(self) -> None:
 		"""Check if any disabled keys can be re-enabled."""
@@ -595,6 +635,7 @@ class ProviderInstance:
 		"""Mark a success and reset failure counter."""
 		self.consecutive_failures = 0
 		self.last_failure = None
+		self.enabled = True
 		self.circuit_breaker.record_success()
 		self.backoff.reset()
 

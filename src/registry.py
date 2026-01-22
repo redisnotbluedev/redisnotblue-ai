@@ -23,6 +23,7 @@ class ModelRegistry:
 		self.providers: Dict[str, Provider] = {}
 		self.provider_defaults: Dict[str, dict] = {}  # Provider-level default rate limits
 		self.provider_api_keys: Dict[str, list] = {}  # Provider-level default API keys
+		self.provider_credit_config: Dict[str, tuple] = {}  # Provider-level credit gain and max config
 		self.global_key_trackers: Dict[str, "RateLimitTracker"] = {}  # Global per-key rate limit trackers
 		self.metrics = MetricsPersistence()
 
@@ -165,6 +166,27 @@ class ModelRegistry:
 		credits_per_request = config.get("credits_per_request", 0.0)
 		return credits_per_token, credits_per_million_tokens, credits_per_request
 
+	def _extract_credit_gain_and_max(self, config: dict) -> tuple:
+		"""Extract provider-level credit gain and max configuration.
+		
+		Returns:
+			Tuple of (credit_gains_dict, credit_maxes_dict)
+		"""
+		credit_gains = {}
+		credit_maxes = {}
+		
+		for period in ("minute", "hour", "day", "month"):
+			gain_key = f"credits_gain_per_{period}"
+			max_key = f"credits_max_per_{period}"
+			
+			gain = config.get(gain_key, 0.0)
+			if gain > 0:
+				credit_gains[period] = gain
+				# Default max to gain amount if not specified
+				credit_maxes[period] = config.get(max_key, gain)
+		
+		return credit_gains, credit_maxes
+
 	def _ensure_global_trackers(self, api_keys: list) -> None:
 		"""Create global rate limit trackers for API keys if they don't exist."""
 		from .models import RateLimitTracker
@@ -204,6 +226,11 @@ class ModelRegistry:
 					self.provider_api_keys[provider_name] = provider_api_keys
 				else:
 					self.provider_api_keys[provider_name] = [provider_api_keys]
+
+			# Store provider-level credit gain and max configuration
+			credit_gains, credit_maxes = self._extract_credit_gain_and_max(provider_config)
+			if credit_gains:
+				self.provider_credit_config[provider_name] = (credit_gains, credit_maxes)
 
 		models_config = config.get("models", {})
 		for model_id, model_config in models_config.items():
@@ -260,11 +287,16 @@ class ModelRegistry:
 					# Set usage multipliers (how much each token/request counts)
 					if token_multiplier != 1.0 or request_multiplier != 1.0:
 						api_key_rotation.set_multipliers(token_multiplier, request_multiplier)
-				
+					
 					# Set credit rates if configured
 					credits_per_token, credits_per_million_tokens, credits_per_request = self._extract_credit_rates(instance_config)
 					if credits_per_token > 0 or credits_per_million_tokens > 0 or credits_per_request > 0:
 						api_key_rotation.set_credit_rates(credits_per_token, credits_per_million_tokens, credits_per_request)
+
+					# Set provider-level credit gain and max if configured
+					if provider_name in self.provider_credit_config:
+						credit_gains, credit_maxes = self.provider_credit_config[provider_name]
+						api_key_rotation.set_credit_gain_and_max(credit_gains, credit_maxes)
 				elif "api_key" in instance_config:
 					api_key = instance_config.get("api_key")
 					if api_key:
@@ -283,6 +315,11 @@ class ModelRegistry:
 						credits_per_token, credits_per_million_tokens, credits_per_request = self._extract_credit_rates(instance_config)
 						if credits_per_token > 0 or credits_per_million_tokens > 0 or credits_per_request > 0:
 							api_key_rotation.set_credit_rates(credits_per_token, credits_per_million_tokens, credits_per_request)
+
+						# Set provider-level credit gain and max if configured
+						if provider_name in self.provider_credit_config:
+							credit_gains, credit_maxes = self.provider_credit_config[provider_name]
+							api_key_rotation.set_credit_gain_and_max(credit_gains, credit_maxes)
 
 				pi = ProviderInstance(
 					provider=provider,

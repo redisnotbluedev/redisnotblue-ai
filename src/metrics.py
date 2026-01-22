@@ -1,9 +1,8 @@
 """Metrics persistence for provider performance tracking."""
 
 import json
-import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 class MetricsPersistence:
@@ -32,7 +31,7 @@ class MetricsPersistence:
 			print(f"Error loading metrics: {e}")
 			return {}
 
-	def extract_provider_metrics(self, provider_instance: "ProviderInstance") -> Dict[str, Any]:
+	def extract_provider_metrics(self, provider_instance) -> Dict[str, Any]:
 		"""Extract metrics from a ProviderInstance for persistence."""
 		return {
 			"consecutive_failures": provider_instance.consecutive_failures,
@@ -44,7 +43,7 @@ class MetricsPersistence:
 			"p95_response_time": provider_instance.speed_tracker.get_percentile_95(),
 		}
 
-	def restore_provider_metrics(self, provider_instance: "ProviderInstance", metrics: Dict[str, Any]) -> None:
+	def restore_provider_metrics(self, provider_instance, metrics: Dict[str, Any]) -> None:
 		"""Restore metrics from disk to a ProviderInstance."""
 		try:
 			provider_instance.consecutive_failures = metrics.get("consecutive_failures", 0)
