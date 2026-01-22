@@ -1,5 +1,5 @@
 from .openai import OpenAIProvider
-import requests, time, uuid, json
+import requests, time, uuid
 
 class GitHubCopilotProvider(OpenAIProvider):
 	"""Provider for the internal GitHub Copilot API with streaming support."""
