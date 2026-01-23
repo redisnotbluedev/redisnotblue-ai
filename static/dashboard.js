@@ -85,6 +85,8 @@ async function updateHealth() {
 	document.getElementById('avg-ttft').textContent = formatTime(stats.avg_ttft_ms ? stats.avg_ttft_ms / 1000 : null);
 	document.getElementById('p95-ttft').textContent = `p95: ${formatTime(stats.p95_ttft_ms ? stats.p95_ttft_ms / 1000 : null)}`;
 	
+	document.getElementById('tps').textContent = (stats.tokens_per_second || 0).toFixed(1);
+
 	document.getElementById('total-tokens').textContent = formatNumber(stats.total_tokens);
 	const promptTokens = stats.total_prompt_tokens || 0;
 	const completionTokens = stats.total_completion_tokens || 0;

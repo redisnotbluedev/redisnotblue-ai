@@ -129,10 +129,10 @@ async def _stream_response(response: dict):
 	choices = response.get("choices", [])
 	if not choices:
 		return
-	
+
 	content = choices[0].get("message", {}).get("content", "")
 	finish_reason = choices[0].get("finish_reason", "stop")
-	
+
 	# Stream tokens one by one
 	for char in content:
 		chunk = {
@@ -150,7 +150,7 @@ async def _stream_response(response: dict):
 		}
 		yield f"data: {json_module.dumps(chunk)}\n\n"
 		await asyncio.sleep(0)
-	
+
 	# Send final chunk
 	final_chunk = {
 		"id": response.get("id"),
@@ -200,15 +200,15 @@ async def chat_completions(request: ChatCompletionRequest):
 	# Prioritize: providers with no data first, then by health score
 	no_data_providers = [p for p in available_providers if len(p.speed_tracker.response_times) == 0]
 	has_data_providers = [p for p in available_providers if len(p.speed_tracker.response_times) > 0]
-	
+
 	# Try no-data providers first, then data providers
 	providers_to_try = no_data_providers + has_data_providers
 
 	last_error = None
 	validation_errors = None
 
-	# Limit to 2 providers before failing
-	for provider_instance in providers_to_try[:2]:
+	# Try all available providers until success or exhaustion
+	for provider_instance in providers_to_try:
 		provider_instance.reset_retry_count()
 
 		while provider_instance.should_retry_request():
@@ -242,10 +242,12 @@ async def chat_completions(request: ChatCompletionRequest):
 				output_tokens = response.get("usage", {}).get("completion_tokens", 0)
 				total_tokens = input_tokens + output_tokens
 				ttft = response.get("ttft", 0.0)
-			
-				# Calculate TTFT relative to start if available
+
+				# Calculate TTFT relative to start if it's an absolute timestamp
 				if ttft and isinstance(ttft, (int, float)):
-					ttft = ttft - start_time if ttft > start_time else 0.0
+					# If TTFT is a large timestamp, subtract start_time to get duration
+					if ttft > 1000000000:
+						ttft = max(0.0, ttft - start_time)
 
 				# Calculate credits based on tracker configuration (if needed)
 				# Note: Credits are auto-calculated in RateLimitTracker based on token counts
@@ -314,9 +316,9 @@ async def chat_completions(request: ChatCompletionRequest):
 		raise HTTPException(status_code=400, detail=error_detail)
 
 	error_detail = (
-		f"All providers failed. Last error: {last_error}"
+		f"All providers failed for model {request.model}. Last error: {last_error}"
 		if last_error
-		else "All providers failed"
+		else f"All providers failed for model {request.model}."
 	)
 	raise HTTPException(status_code=503, detail=error_detail)
 
@@ -346,6 +348,10 @@ async def provider_stats():
 
 		for pi in model.provider_instances:
 			provider_stat = pi.get_stats()
+			# Add extra metrics for dashboard display
+			provider_stat["tokens_per_second"] = pi.speed_tracker.get_tokens_per_second()
+			provider_stat["average_ttft"] = provider_stat.get("avg_ttft", 0)
+
 			if pi.api_key_rotation:
 				provider_stat["api_keys"] = pi.api_key_rotation.get_status()
 			model_stats["providers"].append(provider_stat)
@@ -404,6 +410,7 @@ async def health_check():
 			"p95_response_time_ms": global_metrics.get_p95_response_time() * 1000,
 			"avg_ttft_ms": global_metrics.get_average_ttft() * 1000,
 			"p95_ttft_ms": global_metrics.get_p95_ttft() * 1000,
+			"tokens_per_second": global_metrics.total_completion_tokens / global_metrics.get_uptime_seconds() if global_metrics.get_uptime_seconds() > 0 else 0.0,
 		}
 
 	# Determine overall system status

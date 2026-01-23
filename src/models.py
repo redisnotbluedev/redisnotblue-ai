@@ -776,9 +776,10 @@ class ProviderInstance:
 		Priority is applied separately as a relative ranking bonus.
 		"""
 		# Prioritize providers with no data - give them a huge bonus so they get tested
-		has_data = len(self.speed_tracker.response_times) > 0
-		if not has_data:
-			return 120.0
+		# Only prioritize if they have no successes AND no recent failures
+		has_success_data = len(self.speed_tracker.response_times) > 0
+		if not has_success_data and self.consecutive_failures == 0:
+			return 200.0
 
 		base_score = 100.0
 
@@ -821,8 +822,10 @@ class ProviderInstance:
 			"health_score": self.get_health_score(),
 			"avg_response_time": self.speed_tracker.get_average_time(),
 			"p95_response_time": self.speed_tracker.get_percentile_95(),
+			"average_ttft": self.speed_tracker.get_average_ttft(),
 			"avg_ttft": self.speed_tracker.get_average_ttft(),
 			"p95_ttft": self.speed_tracker.get_p95_ttft(),
+			"tokens_per_second": self.speed_tracker.get_tokens_per_second(),
 		}
 
 

@@ -55,16 +55,8 @@ class OpenAIProvider(Provider):
 			)
 
 			if response.status_code != 200:
-				error_msg = response.text
-				try:
-					error_data = response.json()
-					if "error" in error_data:
-						error_msg = str(error_data["error"])
-				except Exception:
-					pass
-
 				raise Exception(
-					f"OpenAI API error {response.status_code}: {error_msg}"
+					f"OpenAI API error {response.status_code}: {response.text}"
 				)
 
 			return self._process_stream(response, start_time)
