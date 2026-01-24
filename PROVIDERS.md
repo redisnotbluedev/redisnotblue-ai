@@ -111,7 +111,7 @@ Converts the provider's response into OpenAI format.
 
 **Example:**
 ```python
-def translate_response(self, response_data, original_request):
+def translate_response(self, response_data, original_model_id):
     response = dict(response_data)
     
     # Ensure required fields
@@ -121,8 +121,7 @@ def translate_response(self, response_data, original_request):
         response["object"] = "chat.completion"
     if "created" not in response:
         response["created"] = int(time.time())
-    if "model" not in response:
-        response["model"] = original_request.get("model", "unknown")
+    response["model"] = original_model_id
     if "usage" not in response:
         response["usage"] = {
             "prompt_tokens": 0,
@@ -138,7 +137,7 @@ def translate_response(self, response_data, original_request):
     return TransformedResponse(
         data=response,
         provider_name=self.name,
-        original_request=original_request,
+        original_request={},
     )
 ```
 

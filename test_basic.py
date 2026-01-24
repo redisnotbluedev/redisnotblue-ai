@@ -41,11 +41,11 @@ class MockProvider(Provider):
             }
         }
 
-    def translate_response(self, response_data: dict, original_request: dict) -> TransformedResponse:
+    def translate_response(self, response_data: dict, original_model_id: str) -> TransformedResponse:
         return TransformedResponse(
             data=response_data,
             provider_name="mock",
-            original_request=original_request
+            original_request={}
         )
 
 
@@ -134,6 +134,7 @@ def test_mock_provider():
         messages=messages,
         model_id="test-model",
         api_key="test-key",
+        canonical_model_id="test-model",
         temperature=0.7,
         max_tokens=100
     )
@@ -207,11 +208,11 @@ def test_failover():
                     "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
                 }
 
-            def translate_response(self, response_data, original_request):
+            def translate_response(self, response_data, original_model_id):
                 return TransformedResponse(
                     data=response_data,
                     provider_name=self.name,
-                    original_request=original_request
+                    original_request={}
                 )
 
     # Create providers
@@ -226,7 +227,7 @@ def test_failover():
     # First call should fail on first provider, succeed on second
     messages = [{"role": "user", "content": "test"}]
     try:
-        response = pi_fail.provider.chat_completion(messages, "test", "test-key")
+        response = pi_fail.provider.chat_completion(messages, "test", "test-key", canonical_model_id="test")
         assert False, "Should have raised exception"
     except Exception:
         pass
@@ -234,7 +235,7 @@ def test_failover():
     pi_fail.mark_failure()
 
     # Second provider should work
-    response = pi_work.provider.chat_completion(messages, "test", "test-key")
+    response = pi_work.provider.chat_completion(messages, "test", "test-key", canonical_model_id="test")
     assert response["id"] == "success"
     pi_work.mark_success()
 

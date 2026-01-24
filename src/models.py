@@ -612,6 +612,11 @@ class SpeedTracker:
 	ttft_times: List[float] = field(default_factory=list)
 	min_response_time: float = float('inf')
 	max_response_time: float = 0.0
+	persisted_avg_time: float = 0.0
+	persisted_p95: float = 0.0
+	persisted_tokens_per_sec: float = 0.0
+	persisted_avg_ttft: float = 0.0
+	persisted_p95_ttft: float = 0.0
 
 	def record_response(self, duration: float, tokens: int = 0, output_tokens: int = 0, ttft: float = 0.0) -> None:
 		"""Record a response time with token counts and TTFT."""
@@ -634,41 +639,46 @@ class SpeedTracker:
 
 	def get_average_time(self) -> float:
 		"""Get average response time."""
-		if not self.response_times:
-			return 0
-		return sum(self.response_times) / len(self.response_times)
+		if self.response_times:
+			return sum(self.response_times) / len(self.response_times)
+		else:
+			return self.persisted_avg_time
 
 	def get_tokens_per_second(self) -> float:
 		"""Get average output tokens per second (output tokens only for fair TTFT comparison)."""
-		if not self.response_times or not self.output_token_counts:
-			return 0.0
-		total_output_tokens = sum(self.output_token_counts)
-		if total_output_tokens == 0:
-			return 0.0
-		total_time = sum(self.response_times)
-		return total_output_tokens / total_time if total_time > 0 else 0.0
+		if self.response_times and self.output_token_counts:
+			total_output_tokens = sum(self.output_token_counts)
+			if total_output_tokens == 0:
+				return 0.0
+			total_time = sum(self.response_times)
+			return total_output_tokens / total_time if total_time > 0 else 0.0
+		else:
+			return self.persisted_tokens_per_sec
 
 	def get_average_ttft(self) -> float:
 		"""Get average time to first token."""
-		if not self.ttft_times:
-			return 0.0
-		return sum(self.ttft_times) / len(self.ttft_times)
+		if self.ttft_times:
+			return sum(self.ttft_times) / len(self.ttft_times)
+		else:
+			return self.persisted_avg_ttft
 
 	def get_percentile_95(self) -> float:
 		"""Get 95th percentile response time."""
-		if not self.response_times:
-			return 0
-		sorted_times = sorted(self.response_times)
-		idx = int(len(sorted_times) * 0.95)
-		return sorted_times[idx] if idx < len(sorted_times) else sorted_times[-1]
+		if self.response_times:
+			sorted_times = sorted(self.response_times)
+			idx = int(len(sorted_times) * 0.95)
+			return sorted_times[idx] if idx < len(sorted_times) else sorted_times[-1]
+		else:
+			return self.persisted_p95
 
 	def get_p95_ttft(self) -> float:
 		"""Get 95th percentile TTFT."""
-		if not self.ttft_times:
-			return 0.0
-		sorted_times = sorted(self.ttft_times)
-		idx = int(len(sorted_times) * 0.95)
-		return sorted_times[idx] if idx < len(sorted_times) else sorted_times[-1]
+		if self.ttft_times:
+			sorted_times = sorted(self.ttft_times)
+			idx = int(len(sorted_times) * 0.95)
+			return sorted_times[idx] if idx < len(sorted_times) else sorted_times[-1]
+		else:
+			return self.persisted_p95_ttft
 
 
 @dataclass
@@ -776,9 +786,8 @@ class ProviderInstance:
 		Priority is applied separately as a relative ranking bonus.
 		"""
 		# Prioritize providers with no data - give them a huge bonus so they get tested
-		# Only prioritize if they have no successes AND no recent failures
 		has_success_data = len(self.speed_tracker.response_times) > 0
-		if not has_success_data and self.consecutive_failures == 0:
+		if not has_success_data:
 			return 200.0
 
 		base_score = 100.0

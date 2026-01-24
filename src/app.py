@@ -232,6 +232,7 @@ async def chat_completions(request: ChatCompletionRequest):
 					messages=messages,
 					model_id=provider_instance.get_next_model_id(),
 					api_key=api_key,
+					canonical_model_id=request.model,
 					**kwargs,
 				)
 
@@ -248,6 +249,17 @@ async def chat_completions(request: ChatCompletionRequest):
 					# If TTFT is a large timestamp, subtract start_time to get duration
 					if ttft > 1000000000:
 						ttft = max(0.0, ttft - start_time)
+
+				# Check if the response indicates an error
+				finish_reason = response.get("choices", [{}])[0].get("finish_reason")
+				if finish_reason == "error":
+					# Treat as error
+					last_error = f"Provider returned finish_reason 'error'"
+					provider_instance.mark_failure()
+					provider_instance.increment_retry_count()
+					if global_metrics:
+						global_metrics.record_error()
+					break  # Stop retrying this provider
 
 				# Calculate credits based on tracker configuration (if needed)
 				# Note: Credits are auto-calculated in RateLimitTracker based on token counts

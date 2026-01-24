@@ -128,7 +128,7 @@ class OpenAIProvider(Provider):
 	def translate_response(
 		self,
 		response_data: dict,
-		original_request: dict,
+		original_model_id: str,
 	) -> TransformedResponse:
 		"""Convert provider's response to OpenAI format."""
 		usage = response_data.get("usage", {})
@@ -140,7 +140,7 @@ class OpenAIProvider(Provider):
 			"id": response_data.get("id", f"chatcmpl-{uuid.uuid4()}"),
 			"object": "chat.completion",
 			"created": int(time.time()),
-			"model": original_request.get("model", "unknown"),
+			"model": original_model_id,
 			"choices": response_data.get("choices", []),
 			"usage": {
 				"prompt_tokens": prompt,
@@ -156,5 +156,5 @@ class OpenAIProvider(Provider):
 		return TransformedResponse(
 			data=response,
 			provider_name=self.name,
-			original_request=original_request,
+			original_request={},
 		)

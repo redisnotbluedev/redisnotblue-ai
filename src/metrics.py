@@ -188,5 +188,13 @@ class MetricsPersistence:
 			cb.state = metrics.get("circuit_breaker_state", "closed")
 			cb.fail_count = metrics.get("circuit_breaker_fail_count", 0)
 			cb.success_count = metrics.get("circuit_breaker_success_count", 0)
+
+			# Restore persisted speed tracker aggregates
+			st = provider_instance.speed_tracker
+			st.persisted_avg_time = metrics.get("average_response_time", 0.0)
+			st.persisted_p95 = metrics.get("p95_response_time", 0.0)
+			st.persisted_tokens_per_sec = metrics.get("tokens_per_second", 0.0)
+			st.persisted_avg_ttft = metrics.get("average_ttft", 0.0)
+			st.persisted_p95_ttft = metrics.get("p95_ttft", 0.0)
 		except Exception as e:
 			print(f"Error restoring provider metrics: {e}")

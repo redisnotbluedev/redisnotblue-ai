@@ -166,14 +166,14 @@ class Provider(ABC):
 	def translate_response(
 		self,
 		response_data: dict,
-		original_request: dict,
+		original_model_id: str,
 	) -> TransformedResponse:
 		"""
 		Convert provider's response to OpenAI format.
 
 		Args:
 			response_data: The raw response from the provider
-			original_request: The original request data
+			original_model_id: The canonical model ID requested by the client
 
 		Returns:
 			TransformedResponse with data and metadata
@@ -185,6 +185,7 @@ class Provider(ABC):
 		messages: list[dict],
 		model_id: str,
 		api_key: str,
+		canonical_model_id: str = None,
 		**kwargs
 	) -> dict:
 		"""
@@ -224,7 +225,7 @@ class Provider(ABC):
 		# Save original request before any transformation
 		original_request = {
 			"messages": messages,
-			"model": model_id,
+			"model": canonical_model_id or model_id,
 			**merged_kwargs
 		}
 
@@ -241,7 +242,7 @@ class Provider(ABC):
 		# Step 5: Transform response
 		transformed_response = self.translate_response(
 			response_data,
-			original_request
+			canonical_model_id or transformed_request.original_model_id
 		)
 
 		response = transformed_response.data

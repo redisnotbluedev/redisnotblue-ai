@@ -204,6 +204,9 @@ h1 {
 	border: 1px solid #334155;
 	cursor: pointer;
 	transition: all 0.2s;
+	text-decoration: none;
+	color: inherit;
+	display: block;
 }
 
 .model-card:hover {

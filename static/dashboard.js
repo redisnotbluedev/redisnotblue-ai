@@ -70,7 +70,7 @@ async function updateHealth() {
 
 	const statusEl = document.getElementById('system-status');
 	statusEl.textContent = health.status?.toUpperCase() || '—';
-	
+
 	const badgeEl = document.getElementById('system-status-badge');
 	badgeEl.innerHTML = `<span class="status-badge ${getStatusClass(health.status)}">● ${health.status || 'unknown'}</span>`;
 
@@ -78,13 +78,13 @@ async function updateHealth() {
 	document.getElementById('total-requests').textContent = formatNumber(stats.total_requests);
 	document.getElementById('error-rate').textContent = formatPercent(stats.error_rate_percent);
 	document.getElementById('error-count').textContent = `${stats.total_errors || 0} errors`;
-	
+
 	document.getElementById('avg-response').textContent = formatTime(stats.avg_response_time_ms ? stats.avg_response_time_ms / 1000 : null);
 	document.getElementById('p95-response').textContent = `p95: ${formatTime(stats.p95_response_time_ms ? stats.p95_response_time_ms / 1000 : null)}`;
-	
+
 	document.getElementById('avg-ttft').textContent = formatTime(stats.avg_ttft_ms ? stats.avg_ttft_ms / 1000 : null);
 	document.getElementById('p95-ttft').textContent = `p95: ${formatTime(stats.p95_ttft_ms ? stats.p95_ttft_ms / 1000 : null)}`;
-	
+
 	document.getElementById('tps').textContent = (stats.tokens_per_second || 0).toFixed(1);
 
 	document.getElementById('total-tokens').textContent = formatNumber(stats.total_tokens);
@@ -96,7 +96,7 @@ async function updateHealth() {
 	const totalProviders = providerSummary.total_providers || 0;
 	const enabledProviders = providerSummary.enabled_provider_instances || 0;
 	const totalModels = providerSummary.total_providers || 0;
-	
+
 	document.getElementById('enabled-providers').textContent = enabledProviders;
 	document.getElementById('total-providers-text').textContent = `of ${totalProviders} total`;
 	document.getElementById('avg-health').textContent = (providerSummary.avg_provider_health_score || 0).toFixed(1);
@@ -117,10 +117,10 @@ async function updateModels() {
 
 	let html = '<div class="models-grid">';
 	modelData.forEach(model => {
-		html += `<div class="model-card">
+		html += `<a href="#provider-section-${escapeHtml(model.id)}" class="model-card">
 			<div class="model-card-name">${escapeHtml(model.id)}</div>
 			<div class="model-card-count">${escapeHtml(model.owned_by)}</div>
-		</div>`;
+		</a>`;
 	});
 	html += '</div>';
 
@@ -145,7 +145,7 @@ async function updateProviderStats() {
 		const modelStats = stats[modelId];
 		const providers = modelStats.providers || [];
 
-		html += `<div class="provider-table-section">
+		html += `<div id="provider-section-${escapeHtml(modelId)}" class="provider-table-section">
 			<div class="table-container">
 				<div class="table-title">📌 ${escapeHtml(modelId)}</div>
 				<table>
@@ -178,7 +178,7 @@ async function updateProviderStats() {
 					${provider.enabled ? '✓' : '✗'}
 				</span></td>
 				<td>`;
-			
+
 			if (hasData) {
 				html += `<div class="metric-bar">
 					<div class="bar-bg"><div class="bar-fill ${healthClass}" style="width: ${healthScore}%"></div></div>
