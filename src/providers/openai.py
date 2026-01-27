@@ -94,7 +94,7 @@ class OpenAIProvider(Provider):
 
 					if "choices" in chunk and chunk["choices"]:
 						choice = chunk["choices"][0]
-						if "delta" in choice and "content" in choice["delta"]:
+						if "delta" in choice and "content" in choice["delta"] and choice["delta"]["content"] is not None:
 							chunks.append(choice["delta"]["content"])
 						if "finish_reason" in choice and choice["finish_reason"]:
 							finish_reason = choice["finish_reason"]

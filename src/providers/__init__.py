@@ -8,6 +8,7 @@ from .base import (
 	TransformedResponse,
 )
 from .openai import OpenAIProvider
+from .antigravity import AntigravityProvider
 
 __all__ = [
 	"Provider",
@@ -16,4 +17,5 @@ __all__ = [
 	"TransformedRequest",
 	"TransformedResponse",
 	"OpenAIProvider",
+	"AntigravityProvider",
 ]

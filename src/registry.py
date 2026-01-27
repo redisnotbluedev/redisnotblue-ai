@@ -6,12 +6,14 @@ from .providers.github_copilot import GitHubCopilotProvider
 from .models import Model, ProviderInstance, ApiKeyRotation, RateLimitTracker
 from .providers.base import Provider
 from .providers.openai import OpenAIProvider
+from .providers.antigravity import AntigravityProvider
 from .metrics import MetricsPersistence
 
 
 PROVIDER_CLASSES = {
 	"openai": OpenAIProvider,
-	"copilot": GitHubCopilotProvider
+	"copilot": GitHubCopilotProvider,
+	"antigravity": AntigravityProvider
 }
 
 
