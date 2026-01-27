@@ -27,7 +27,7 @@ def on_metrics_change():
 	try:
 		if registry:
 			registry.save_metrics()
-		if global_metrics:
+		if registry and global_metrics:
 			registry.metrics.save_global_metrics(global_metrics)
 	except Exception as e:
 		print(f"Error saving metrics on change: {e}")
@@ -252,9 +252,10 @@ async def chat_completions(request: ChatCompletionRequest):
 
 				# Check if the response indicates an error
 				finish_reason = response.get("choices", [{}])[0].get("finish_reason")
-				if finish_reason == "error":
+				content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+				if finish_reason == "error" or not content:
 					# Treat as error
-					last_error = f"Provider returned finish_reason 'error'"
+					last_error = "Provider returned finish_reason 'error'" if finish_reason == "error" else "Provider returned empty message"
 					provider_instance.mark_failure()
 					provider_instance.increment_retry_count()
 					if global_metrics:
