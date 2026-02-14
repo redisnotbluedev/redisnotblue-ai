@@ -7,11 +7,9 @@ from .models import Model, ProviderInstance, ApiKeyRotation, RateLimitTracker
 from .providers.base import Provider
 from .providers.openai import OpenAIProvider
 from .providers.antigravity import AntigravityProvider
-from .providers.blackbox import BlackboxProvider
 from .providers.deepseek_web import DeepSeekWebProvider
 from .providers.glm_web import GLMWebProvider
 from .providers.kimi_web import KimiWebProvider
-from .providers.lambda_web import LambdaProvider
 from .providers.yupp import YuppProvider
 from .metrics import MetricsPersistence
 
@@ -20,11 +18,9 @@ PROVIDER_CLASSES = {
 	"openai": OpenAIProvider,
 	"github_copilot": GitHubCopilotProvider,
 	"antigravity": AntigravityProvider,
-	"blackbox": BlackboxProvider,
 	"deepseek_web": DeepSeekWebProvider,
 	"glm_web": GLMWebProvider,
 	"kimi_web": KimiWebProvider,
-	"lambda_web": LambdaProvider,
 	"yupp": YuppProvider,
 }
 
