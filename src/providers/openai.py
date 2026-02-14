@@ -26,7 +26,13 @@ class OpenAIProvider(Provider):
 			"stream": True,
 		}
 
-		for key in ["temperature", "top_p", "stop", "max_tokens"]:
+		# Handle core OpenAI parameters
+		openai_params = [
+			"temperature", "top_p", "stop", "max_tokens",
+			"tools", "tool_choice"
+		]
+
+		for key in openai_params:
 			if key in kwargs and kwargs[key] is not None:
 				request[key] = kwargs[key]
 

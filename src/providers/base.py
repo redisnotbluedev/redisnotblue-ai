@@ -56,7 +56,7 @@ class Provider(ABC):
 		Args:
 			messages: List of message dicts
 			model_id: The model ID requested
-			**kwargs: Additional parameters
+			**kwargs: Additional parameters (tools, tool_choice, etc.)
 
 		Returns:
 			ValidationResult with any validation errors
@@ -95,12 +95,67 @@ class Provider(ABC):
 					code="MISSING_ROLE"
 				))
 
-			if "content" not in msg:
+			if "content" not in msg and "tool_calls" not in msg:
 				errors.append(ValidationError(
 					field=f"messages[{i}].content",
-					message="Message content is required",
+					message="Message content or tool_calls is required",
 					code="MISSING_CONTENT"
 				))
+
+			# Validate content structure (can be string or list for multimodality)
+			content = msg.get("content")
+			if content is not None:
+				if isinstance(content, list):
+					# Validate multimodal content
+					for j, block in enumerate(content):
+						if not isinstance(block, dict) or "type" not in block:
+							errors.append(ValidationError(
+								field=f"messages[{i}].content[{j}]",
+								message="Content block must be a dict with 'type' field",
+								code="INVALID_CONTENT_BLOCK"
+							))
+				elif not isinstance(content, str):
+					errors.append(ValidationError(
+						field=f"messages[{i}].content",
+						message="Content must be a string or list of content blocks",
+						code="INVALID_CONTENT_TYPE"
+					))
+
+			# Validate tool calls if present
+			tool_calls = msg.get("tool_calls")
+			if tool_calls is not None:
+				if not isinstance(tool_calls, list):
+					errors.append(ValidationError(
+						field=f"messages[{i}].tool_calls",
+						message="Tool calls must be a list",
+						code="INVALID_TOOL_CALLS"
+					))
+				else:
+					for j, tool_call in enumerate(tool_calls):
+						if not isinstance(tool_call, dict):
+							errors.append(ValidationError(
+								field=f"messages[{i}].tool_calls[{j}]",
+								message="Tool call must be a dict",
+								code="INVALID_TOOL_CALL"
+							))
+
+		# Validate tools parameter
+		tools = kwargs.get("tools")
+		if tools is not None:
+			if not isinstance(tools, list):
+				errors.append(ValidationError(
+					field="tools",
+					message="Tools must be a list",
+					code="INVALID_TOOLS"
+				))
+			else:
+				for i, tool in enumerate(tools):
+					if not isinstance(tool, dict) or tool.get("type") != "function":
+						errors.append(ValidationError(
+							field=f"tools[{i}]",
+							message="Tool must be a dict with type 'function'",
+							code="INVALID_TOOL"
+						))
 
 		return ValidationResult(
 			is_valid=len(errors) == 0,
@@ -120,12 +175,21 @@ class Provider(ABC):
 		Args:
 			messages: List of message dicts
 			model_id: The model ID requested
-			**kwargs: Additional parameters
+			**kwargs: Additional parameters (tools, tool_choice, etc.)
 
 		Returns:
 			Dict of prefilled values (merged with provided kwargs)
 		"""
-		return {}
+		prefilled = {}
+
+		# Set common defaults that providers might want to override
+		if "temperature" not in kwargs and kwargs.get("temperature") is None:
+			prefilled["temperature"] = 0.7
+
+		if "top_p" not in kwargs and kwargs.get("top_p") is None:
+			prefilled["top_p"] = 1.0
+
+		return prefilled
 
 	@abstractmethod
 	def translate_request(
@@ -139,9 +203,9 @@ class Provider(ABC):
 		Now returns TransformedRequest with metadata.
 
 		Args:
-			messages: List of message dicts
+			messages: List of message dicts (may include multimodal content and tool calls)
 			model_id: The provider's model ID (already mapped)
-			**kwargs: Additional parameters
+			**kwargs: Additional parameters (tools, tool_choice, frequency_penalty, etc.)
 
 		Returns:
 			TransformedRequest with data, model IDs, and metadata
@@ -193,10 +257,11 @@ class Provider(ABC):
 		Handles validation, prefilling, transformation, and response translation.
 
 		Args:
-			messages: List of message dicts
+			messages: List of message dicts (may include multimodal content and tool calls)
 			model_id: The model ID
 			api_key: API key for authentication
-			**kwargs: Additional parameters
+			canonical_model_id: Original model ID from client
+			**kwargs: Additional parameters (tools, tool_choice, frequency_penalty, etc.)
 
 		Returns:
 			Response dict with routing information

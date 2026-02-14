@@ -7,13 +7,23 @@ from .models import Model, ProviderInstance, ApiKeyRotation, RateLimitTracker
 from .providers.base import Provider
 from .providers.openai import OpenAIProvider
 from .providers.antigravity import AntigravityProvider
+from .providers.blackbox import BlackboxProvider
+from .providers.deepseek_web import DeepSeekWebProvider
+from .providers.glm_web import GLMWebProvider
+from .providers.kimi_web import KimiWebProvider
+from .providers.lambda_web import LambdaProvider
 from .metrics import MetricsPersistence
 
 
 PROVIDER_CLASSES = {
 	"openai": OpenAIProvider,
-	"copilot": GitHubCopilotProvider,
-	"antigravity": AntigravityProvider
+	"github_copilot": GitHubCopilotProvider,
+	"antigravity": AntigravityProvider,
+	"blackbox": BlackboxProvider,
+	"deepseek_web": DeepSeekWebProvider,
+	"glm_web": GLMWebProvider,
+	"kimi_web": KimiWebProvider,
+	"lambda_web": LambdaProvider,
 }
 
 
@@ -159,9 +169,9 @@ class ModelRegistry:
 
 	def _extract_credit_rates(self, config: dict) -> tuple:
 		"""Extract credit rate configuration from instance config.
-		
+
 		Returns:
-			Tuple of (credits_per_token, credits_per_million_tokens, 
+			Tuple of (credits_per_token, credits_per_million_tokens,
 			          credits_per_in_token, credits_per_out_token,
 			          credits_per_million_in_tokens, credits_per_million_out_tokens,
 			          credits_per_request)
@@ -173,30 +183,30 @@ class ModelRegistry:
 		credits_per_million_in_tokens = config.get("credits_per_million_in_tokens", 0.0)
 		credits_per_million_out_tokens = config.get("credits_per_million_out_tokens", 0.0)
 		credits_per_request = config.get("credits_per_request", 0.0)
-		return (credits_per_token, credits_per_million_tokens, 
+		return (credits_per_token, credits_per_million_tokens,
 		        credits_per_in_token, credits_per_out_token,
 		        credits_per_million_in_tokens, credits_per_million_out_tokens,
 		        credits_per_request)
 
 	def _extract_credit_gain_and_max(self, config: dict) -> tuple:
 		"""Extract provider-level credit gain and max configuration.
-		
+
 		Returns:
 			Tuple of (credit_gains_dict, credit_maxes_dict)
 		"""
 		credit_gains = {}
 		credit_maxes = {}
-		
+
 		for period in ("minute", "hour", "day", "month"):
 			gain_key = f"credits_gain_per_{period}"
 			max_key = f"credits_max_per_{period}"
-			
+
 			gain = config.get(gain_key, 0.0)
 			if gain > 0:
 				credit_gains[period] = gain
 				# Default max to gain amount if not specified
 				credit_maxes[period] = config.get(max_key, gain)
-		
+
 		return credit_gains, credit_maxes
 
 	def _ensure_global_trackers(self, api_keys: list) -> None:
@@ -299,7 +309,7 @@ class ModelRegistry:
 					# Set usage multipliers (how much each token/request counts)
 					if token_multiplier != 1.0 or request_multiplier != 1.0:
 						api_key_rotation.set_multipliers(token_multiplier, request_multiplier)
-					
+
 					# Set credit rates if configured
 					credit_rates = self._extract_credit_rates(instance_config)
 					if any(rate > 0 for rate in credit_rates):
@@ -322,7 +332,7 @@ class ModelRegistry:
 						# Set usage multipliers (how much each token/request counts)
 						if token_multiplier != 1.0 or request_multiplier != 1.0:
 							api_key_rotation.set_multipliers(token_multiplier, request_multiplier)
-					
+
 						# Set credit rates if configured
 						credit_rates = self._extract_credit_rates(instance_config)
 						if any(rate > 0 for rate in credit_rates):

@@ -66,9 +66,28 @@ async def lifespan(app: FastAPI):
 		print("Global metrics saved")
 
 
+class ContentBlock(BaseModel):
+	type: str
+	text: Optional[str] = None
+	image_url: Optional[dict] = None
+
+
+class Tool(BaseModel):
+	type: str
+	function: dict
+
+
+class ToolCall(BaseModel):
+	id: str
+	type: str
+	function: dict
+
+
 class ChatMessage(BaseModel):
 	role: str
-	content: str
+	content: Union[str, list[ContentBlock]]
+	tool_calls: Optional[list[ToolCall]] = None
+	tool_call_id: Optional[str] = None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -80,17 +99,21 @@ class ChatCompletionRequest(BaseModel):
 	top_p: Optional[float] = None
 	stop: Optional[Union[str, list[str]]] = None
 	stream: bool = False
+	tools: Optional[list[Tool]] = None
+	tool_choice: Optional[Union[str, dict]] = None
 
 
 class ChatMessage_Response(BaseModel):
 	role: str
-	content: str
+	content: Optional[str] = None
+	tool_calls: Optional[list[ToolCall]] = None
 
 
 class Choice(BaseModel):
 	index: int
 	message: ChatMessage_Response
-	finish_reason: str
+	finish_reason: Optional[str] = None
+	logprobs: Optional[dict] = None
 
 
 class Usage(BaseModel):
@@ -130,11 +153,33 @@ async def _stream_response(response: dict):
 	if not choices:
 		return
 
-	content = choices[0].get("message", {}).get("content", "")
-	finish_reason = choices[0].get("finish_reason", "stop")
+	choice = choices[0]
+	message = choice.get("message", {})
+	content = message.get("content", "")
+	tool_calls = message.get("tool_calls", [])
+	finish_reason = choice.get("finish_reason", "stop")
 
-	# Stream tokens one by one
-	for char in content:
+	# Stream content tokens one by one
+	if content:
+		for char in content:
+			chunk = {
+				"id": response.get("id"),
+				"object": "chat.completion.chunk",
+				"created": response.get("created"),
+				"model": response.get("model"),
+				"choices": [
+					{
+						"index": 0,
+						"delta": {"content": char},
+						"finish_reason": None
+					}
+				]
+			}
+			yield f"data: {json_module.dumps(chunk)}\n\n"
+			await asyncio.sleep(0)
+
+	# Stream tool calls
+	for tool_call in tool_calls:
 		chunk = {
 			"id": response.get("id"),
 			"object": "chat.completion.chunk",
@@ -143,13 +188,12 @@ async def _stream_response(response: dict):
 			"choices": [
 				{
 					"index": 0,
-					"delta": {"content": char},
+					"delta": {"tool_calls": [tool_call]},
 					"finish_reason": None
 				}
 			]
 		}
 		yield f"data: {json_module.dumps(chunk)}\n\n"
-		await asyncio.sleep(0)
 
 	# Send final chunk
 	final_chunk = {
@@ -191,6 +235,10 @@ async def chat_completions(request: ChatCompletionRequest):
 		kwargs["top_p"] = request.top_p
 	if request.stop is not None:
 		kwargs["stop"] = request.stop
+	if request.tools is not None:
+		kwargs["tools"] = request.tools
+	if request.tool_choice is not None:
+		kwargs["tool_choice"] = request.tool_choice
 
 	available_providers = model.get_available_providers()
 
@@ -252,8 +300,13 @@ async def chat_completions(request: ChatCompletionRequest):
 
 				# Check if the response indicates an error
 				finish_reason = response.get("choices", [{}])[0].get("finish_reason")
-				content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
-				if finish_reason == "error" or not content:
+				message = response.get("choices", [{}])[0].get("message", {})
+				content = message.get("content", "")
+				tool_calls = message.get("tool_calls", [])
+
+				# Allow responses with tool calls but no content
+				has_content = bool(content or tool_calls)
+				if finish_reason == "error" or (not has_content and finish_reason not in ["tool_calls", "function_call"]):
 					# Treat as error
 					last_error = "Provider returned finish_reason 'error'" if finish_reason == "error" else "Provider returned empty message"
 					provider_instance.mark_failure()
