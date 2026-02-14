@@ -12,6 +12,7 @@ from .providers.deepseek_web import DeepSeekWebProvider
 from .providers.glm_web import GLMWebProvider
 from .providers.kimi_web import KimiWebProvider
 from .providers.lambda_web import LambdaProvider
+from .providers.yupp import YuppProvider
 from .metrics import MetricsPersistence
 
 
@@ -24,6 +25,7 @@ PROVIDER_CLASSES = {
 	"glm_web": GLMWebProvider,
 	"kimi_web": KimiWebProvider,
 	"lambda_web": LambdaProvider,
+	"yupp": YuppProvider,
 }
 
 
