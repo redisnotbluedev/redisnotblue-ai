@@ -1,5 +1,6 @@
 import requests
 from .base import Provider, TransformedRequest, TransformedResponse
+from .browser_evasion import get_browser_headers
 
 class KimiWebProvider(Provider):
 	def __init__(self, name, config):
@@ -15,20 +16,10 @@ class KimiWebProvider(Provider):
 		)
 
 	def make_request(self, request_data, api_key) -> dict:
-		stealth_headers = {
-			"Sec-Ch-Ua": '"Not(A:Brand";v="99", "Google Chrome";v="137", "Chromium";v="137"',
-			"Sec-Ch-Ua-Mobile": "?0",
-			"Sec-Ch-Ua-Platform": '"Windows"',
-			"Sec-Fetch-Dest": "empty",
-			"Sec-Fetch-Mode": "cors",
-			"Sec-Fetch-Site": "same-origin",
-			"Priority": "u=1, i",
-			"Pragma": "no-cache",
-			"Cache-Control": "no-cache"
-		}
-		auth_headers = {"Authorization": f"Bearer {api_key}", **stealth_headers}
+		base_headers = get_browser_headers("https://kimi.moonshot.cn/")
+		auth_headers = {"Authorization": f"Bearer {api_key}", **base_headers}
 		auth = requests.post(f"{self.base_url}/auth/token", headers=auth_headers).json()
-		headers = {"Authorization": f"Bearer {auth.get('access_token')}", **stealth_headers}
+		headers = {"Authorization": f"Bearer {auth.get('access_token')}", **base_headers}
 		chat = requests.post(f"{self.base_url}/chat", headers=headers, json={"name": "Proxy"}).json()
 		resp = requests.post(f"{self.base_url}/chat/{chat['id']}/completion", headers=headers, json={"messages": request_data["messages"]})
 		return resp.json()

@@ -24,22 +24,27 @@ class BlackboxProvider(Provider):
 		return TransformedRequest(data=payload, original_model_id=model_id, provider_model_id=model_id)
 
 	def make_request(self, request_data, api_key) -> dict:
-		headers = {
-			"Content-Type": "application/json",
-			"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-			"Accept": "*/*",
-			"Origin": "https://www.blackbox.ai",
-			"Referer": "https://www.blackbox.ai/",
-			"Sec-Ch-Ua": '"Not(A:Brand";v="99", "Google Chrome";v="134", "Chromium";v="134"',
-			"Sec-Ch-Ua-Mobile": "?0",
-			"Sec-Ch-Ua-Platform": '"Linux"',
-			"Priority": "u=1, i"
-		}
-		if api_key: headers["Cookie"] = f"sessionId={api_key}"
+		headers = get_browser_headers("https://www.blackbox.ai/", "https://www.blackbox.ai")
 
+		# If you provide a session token, we use it.
+		# If you don't, we chat as a guest.
+		if api_key:
+			headers["Cookie"] = f"sessionId={api_key}"
+
+		# Jitter to avoid bot-spam flags
+		time.sleep(random.uniform(0.5, 1.2))
 		resp = requests.post(self.base_url, json=request_data, headers=headers, timeout=self.timeout)
+
+		if resp.status_code == 429:
+			raise Exception("Blackbox Rate Limited: Please provide/refresh sessionId in config.")
+
 		content = resp.text
 		if "$$$" in content: content = content.split("$$$")[-1]
+
+		# Check if we were told to sign in (happens when using gpt-5.2 without a key)
+		if "Please sign in" in content or "reached your daily limit" in content:
+			raise Exception("Blackbox Premium Limit: sessionId required for this model.")
+
 		return {"content": content.strip()}
 
 	def translate_response(self, response_data, original_model_id) -> TransformedResponse:

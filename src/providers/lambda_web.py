@@ -1,6 +1,7 @@
 import requests
 import json
 from .base import Provider, TransformedRequest, TransformedResponse
+from .browser_evasion import get_browser_headers
 
 class LambdaProvider(Provider):
 	def __init__(self, name, config):
@@ -17,7 +18,7 @@ class LambdaProvider(Provider):
 
 	def make_request(self, request_data, api_key) -> dict:
 		s = requests.Session()
-		s.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"})
+		s.headers.update(get_browser_headers("https://lambda.chat/"))
 		s.cookies.set("hf-chat", api_key)
 
 		# 1. SvelteKit Pre-Flight (Evasiveness)
