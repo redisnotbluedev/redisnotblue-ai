@@ -5,88 +5,195 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>AI Proxy Dashboard</title>
 	<link rel="stylesheet" href="/style.css">
+	<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
 </head>
 <body>
 	<div class="container">
 		<header>
 			<h1>🤖 AI Proxy Dashboard</h1>
-			<p class="header-subtitle">Real-time monitoring of LLM provider health and performance</p>
+			<p class="header-subtitle">Advanced monitoring of LLM provider health, performance, and analytics</p>
 		</header>
 
 		<div id="error-container"></div>
+		<div id="alerts-container"></div>
 
 		<div class="controls">
-			<div class="last-updated">Last updated: <span id="last-updated">loading...</span></div>
-			<button class="refresh-button" onclick="refreshData()">↻ Refresh</button>
+			<div class="control-group">
+				<div class="last-updated">Last updated: <span id="last-updated">loading...</span></div>
+				<div class="control-buttons">
+					<button class="control-button" onclick="toggleAutoRefresh()">
+						<span id="auto-refresh-icon">⏸️</span> Auto-refresh
+					</button>
+					<button class="refresh-button" onclick="refreshData()">↻ Refresh</button>
+				</div>
+			</div>
+			<div class="view-controls">
+				<button class="view-toggle active" onclick="switchView('overview')">Overview</button>
+				<button class="view-toggle" onclick="switchView('analytics')">Analytics</button>
+				<button class="view-toggle" onclick="switchView('routing')">Routing</button>
+			</div>
 		</div>
 
-		<div class="dashboard-grid">
-			<div class="panel">
-				<div class="panel-title">⚡ System Status</div>
-				<div class="metric-cards">
-					<div class="metric-card">
-						<div class="metric-label">Status</div>
-						<div class="metric-value" id="system-status">—</div>
-						<div id="system-status-badge" style="margin-top: 8px;"></div>
+		<!-- Overview View -->
+		<div id="overview-view" class="view-container active">
+			<div class="dashboard-grid">
+				<div class="panel">
+					<div class="panel-title">⚡ System Status</div>
+					<div class="metric-cards">
+						<div class="metric-card">
+							<div class="metric-label">Status</div>
+							<div class="metric-value" id="system-status">—</div>
+							<div id="system-status-badge" style="margin-top: 8px;"></div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Total Requests</div>
+							<div class="metric-value" id="total-requests">—</div>
+							<div class="metric-subtext">Since startup</div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Error Rate</div>
+							<div class="metric-value" id="error-rate">—</div>
+							<div class="metric-subtext" id="error-count"></div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Total Tokens</div>
+							<div class="metric-value" id="total-tokens">—</div>
+							<div class="metric-subtext" id="token-breakdown"></div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Credits Used</div>
+							<div class="metric-value" id="total-credits">—</div>
+							<div class="metric-subtext" id="cost-efficiency"></div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Uptime</div>
+							<div class="metric-value" id="uptime">—</div>
+							<div class="metric-subtext" id="uptime-seconds"></div>
+						</div>
 					</div>
-					<div class="metric-card">
-						<div class="metric-label">Total Requests</div>
-						<div class="metric-value" id="total-requests">—</div>
-						<div class="metric-subtext">Since startup</div>
+				</div>
+
+				<div class="panel">
+					<div class="panel-title">📊 Performance Metrics</div>
+					<div class="metric-cards">
+						<div class="metric-card">
+							<div class="metric-label">Avg Response Time</div>
+							<div class="metric-value" id="avg-response">—</div>
+							<div class="metric-subtext" id="p95-response"></div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Avg TTFT</div>
+							<div class="metric-value" id="avg-ttft">—</div>
+							<div class="metric-subtext" id="p95-ttft"></div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Throughput</div>
+							<div class="metric-value" id="tps">—</div>
+							<div class="metric-subtext">tokens / sec</div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Active Providers</div>
+							<div class="metric-value" id="enabled-providers">—</div>
+							<div class="metric-subtext" id="total-providers-text">of — total</div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Avg Health Score</div>
+							<div class="metric-value" id="avg-health">—</div>
+							<div class="metric-subtext" id="avg-providers-per-model-text">— models</div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Load Prediction</div>
+							<div class="metric-value" id="load-prediction">—</div>
+							<div class="metric-subtext" id="prediction-confidence"></div>
+						</div>
 					</div>
-					<div class="metric-card">
-						<div class="metric-label">Error Rate</div>
-						<div class="metric-value" id="error-rate">—</div>
-						<div class="metric-subtext" id="error-count"></div>
+				</div>
+			</div>
+
+			<div class="dashboard-grid">
+				<div class="panel">
+					<div class="panel-title">📈 Performance Trends</div>
+					<div class="chart-container">
+						<canvas id="performance-chart" width="400" height="200"></canvas>
 					</div>
-					<div class="metric-card">
-						<div class="metric-label">Total Tokens</div>
-						<div class="metric-value" id="total-tokens">—</div>
-						<div class="metric-subtext" id="token-breakdown"></div>
+				</div>
+
+				<div class="panel">
+					<div class="panel-title">🔥 Anomaly Detection</div>
+					<div id="anomaly-container">
+						<div class="loading">Loading anomaly data...</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Analytics View -->
+		<div id="analytics-view" class="view-container">
+			<div class="dashboard-grid">
+				<div class="panel">
+					<div class="panel-title">📊 Advanced Analytics</div>
+					<div class="metric-cards">
+						<div class="metric-card">
+							<div class="metric-label">Anomalies Detected</div>
+							<div class="metric-value" id="anomaly-count">—</div>
+							<div class="metric-subtext">Last 24h</div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Rate Limit Efficiency</div>
+							<div class="metric-value" id="avg-efficiency">—</div>
+							<div class="metric-subtext">Avg across providers</div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Cost per Token</div>
+							<div class="metric-value" id="cost-per-token">—</div>
+							<div class="metric-subtext" id="cost-trend"></div>
+						</div>
+						<div class="metric-card">
+							<div class="metric-label">Response Time Trend</div>
+							<div class="metric-value" id="rt-trend">—</div>
+							<div class="metric-subtext" id="rt-trend-desc"></div>
+						</div>
+					</div>
+				</div>
+
+				<div class="panel">
+					<div class="panel-title">🎯 Provider Efficiency</div>
+					<div class="chart-container">
+						<canvas id="efficiency-chart" width="400" height="200"></canvas>
 					</div>
 				</div>
 			</div>
 
 			<div class="panel">
-				<div class="panel-title">📊 Performance Metrics</div>
-				<div class="metric-cards">
-					<div class="metric-card">
-						<div class="metric-label">Avg Response Time</div>
-						<div class="metric-value" id="avg-response">—</div>
-						<div class="metric-subtext" id="p95-response"></div>
-					</div>
-					<div class="metric-card">
-						<div class="metric-label">Avg TTFT</div>
-						<div class="metric-value" id="avg-ttft">—</div>
-						<div class="metric-subtext" id="p95-ttft"></div>
-					</div>
-					<div class="metric-card">
-						<div class="metric-label">Throughput</div>
-						<div class="metric-value" id="tps">—</div>
-						<div class="metric-subtext">tokens / sec</div>
-					</div>
-					<div class="metric-card">
-						<div class="metric-label">Active Providers</div>
-						<div class="metric-value" id="enabled-providers">—</div>
-						<div class="metric-subtext" id="total-providers-text">of — total</div>
-					</div>
-					<div class="metric-card">
-						<div class="metric-label">Avg Health Score</div>
-						<div class="metric-value" id="avg-health">—</div>
-						<div class="metric-subtext" id="avg-providers-per-model-text">— models</div>
-					</div>
+				<div class="panel-title">🔧 Rate Limiter Analytics</div>
+				<div id="rate-limiter-container">
+					<div class="loading">Loading rate limiter data...</div>
 				</div>
 			</div>
 		</div>
 
-		<h2 class="section-title">📋 Available Models</h2>
-		<div id="models-container">
-			<div class="loading">Loading models...</div>
+		<!-- Routing View -->
+		<div id="routing-view" class="view-container">
+			<div class="panel">
+				<div class="panel-title">🎛️ Routing Configuration</div>
+				<div id="routing-config-container">
+					<div class="loading">Loading routing configuration...</div>
+				</div>
+			</div>
 		</div>
 
-		<h2 class="section-title">⚙️ Provider Performance by Model</h2>
-		<div id="providers-container">
-			<div class="loading">Loading provider stats...</div>
+		<!-- Models and Providers Section (shown in all views) -->
+		<div class="models-providers-section">
+			<h2 class="section-title">📋 Available Models</h2>
+			<div id="models-container">
+				<div class="loading">Loading models...</div>
+			</div>
+
+			<h2 class="section-title">⚙️ Provider Performance by Model</h2>
+			<div id="providers-container">
+				<div class="loading">Loading provider stats...</div>
+			</div>
 		</div>
 	</div>
 
