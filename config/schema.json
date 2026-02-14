@@ -32,6 +32,7 @@
 					"api_keys": {
 						"type": "array",
 						"description": "List of API keys for this provider",
+						"minItems": 1,
 						"items": { "type": "string", "description": "API key" }
 					},
 					"rate_limits": {
