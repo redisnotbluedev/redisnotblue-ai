@@ -402,6 +402,8 @@ The proxy supports multiple rate limiting strategies:
 **Multipliers:**
 - `multiplier`: Overall request/token multiplier
 - `token_multiplier`: Token-specific multiplier
+- `in_token_multiplier`: Input token-specific multiplier
+- `out_token_multiplier`: Output token-specific multiplier
 - `request_multiplier`: Request-specific multiplier
 
 ## Request Flow

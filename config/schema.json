@@ -296,13 +296,24 @@
 								"token_multiplier": {
 									"type": "number",
 									"minimum": 0.1,
-									"description": "How much each token counts toward token limits (e.g., 2.0 = counts as 2x, effective token limit halved)"
+									"description": "How much each token counts toward token limits (e.g., 2.0 = counts as 2x, effective limit halved)"
+								},
+								"in_token_multiplier": {
+									"type": "number",
+									"minimum": 0.1,
+									"description": "How much each input token counts toward input token limits (e.g., 2.0 = counts as 2x, effective limit halved)"
+								},
+								"out_token_multiplier": {
+									"type": "number",
+									"minimum": 0.1,
+									"description": "How much each output token counts toward output token limits (e.g., 2.0 = counts as 2x, effective limit halved)"
 								},
 								"request_multiplier": {
 									"type": "number",
 									"minimum": 0.1,
-									"description": "How much each request counts toward request limits (e.g., 2.0 = counts as 2x, effective request limit halved)"
+									"description": "How much each request counts toward request limits (e.g., 2.0 = counts as 2x, effective limit halved)"
 								}
+
 							}
 						}
 					},

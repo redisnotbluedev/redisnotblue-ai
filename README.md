@@ -81,6 +81,8 @@ models:
 - `rate_limits` (optional): Override provider's rate limits
 - `multiplier` (optional): How much each item counts toward limits (2.0 = counts as 2x)
 - `token_multiplier` (optional): How much each token counts toward token limits
+- `in_token_multiplier` (optional): How much each input token counts toward input token limits
+- `out_token_multiplier` (optional): How much each output token counts toward output token limits
 - `request_multiplier` (optional): How much each request counts toward request limits
 - `credits_per_token` (optional): Credit cost per token (model-level pricing)
 - `credits_per_million_tokens` (optional): Credit cost per million tokens (model-level pricing)
@@ -120,6 +122,29 @@ models:
 - Each actual token counts as 2x toward the limit
 - Effective limit: 50,000 actual tokens per day
 - Tracked limit: 100,000 ÷ 2.0 = 50,000
+
+**Example with separate input/output multipliers:**
+```yaml
+providers:
+  my_provider:
+    type: openai
+    base_url: https://api.openai.com/v1
+    api_keys:
+      - sk-proj-key
+
+models:
+  gpt-4:
+    providers:
+      my_provider:
+        model_id: gpt-4
+        rate_limits:
+          in_tokens_per_day: 60000
+          out_tokens_per_day: 40000
+        in_token_multiplier: 2.0
+        out_token_multiplier: 1.5
+```
+- Each input token counts as 2x toward input limits (effective limit: 30,000 actual input tokens)
+- Each output token counts as 1.5x toward output limits (effective limit: ~26,667 actual output tokens)
 
 **Behavior:**
 - Per-key tracking: Each key has independent counters
@@ -168,7 +193,7 @@ All limits work with time windows: `_per_minute`, `_per_hour`, `_per_day`, `_per
 - Each limit is checked independently (ALL must pass)
 - If you set `tokens_per_day: 1000` and `in_tokens_per_day: 600`, both apply
 - `in_tokens + out_tokens` cannot exceed `tokens_per_day`
-- Multipliers work the same way: each token counts multiplied by `token_multiplier`
+- Multipliers work the same way: each token counts multiplied by the corresponding `token_multiplier`, `in_token_multiplier`, or `out_token_multiplier`
 
 **Example combining all limits:**
 ```yaml

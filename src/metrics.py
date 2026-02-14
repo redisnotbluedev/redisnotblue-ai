@@ -7,7 +7,7 @@ from typing import Dict, Any
 
 
 class GlobalMetrics:
-	"""Track global system metrics."""
+	"""Track global system metrics with advanced analytics."""
 
 	def __init__(self, on_change=None):
 		self.total_requests: int = 0
@@ -21,9 +21,19 @@ class GlobalMetrics:
 		self.errors_count: int = 0
 		self.on_change = on_change  # Callback when metrics change
 
+		# Advanced analytics fields
+		self.request_timestamps: list = []  # Timestamps for time-series analysis
+		self.error_timestamps: list = []  # Error timestamps for anomaly detection
+		self.cost_history: list = []  # Cost per request history
+		self.performance_history: list = []  # (timestamp, response_time, tokens) tuples
+		self.anomaly_scores: list = []  # Rolling anomaly detection scores
+		self.baseline_metrics: dict = {}  # Baseline performance metrics
+		self.trend_analysis: dict = {}  # Performance trend data
+
 	def record_request(self, duration: float, tokens: int = 0, prompt_tokens: int = 0,
 	                   completion_tokens: int = 0, credits: float = 0.0, ttft: float = 0.0) -> None:
 		"""Record a successful request."""
+		current_time = time.time()
 		self.total_requests += 1
 		self.total_tokens += tokens
 		self.total_prompt_tokens += prompt_tokens
@@ -41,14 +51,38 @@ class GlobalMetrics:
 			if len(self.first_token_times) > 1000:
 				self.first_token_times.pop(0)
 
+		# Advanced analytics tracking
+		self.request_timestamps.append(current_time)
+		if len(self.request_timestamps) > 1000:
+			self.request_timestamps.pop(0)
+
+		if credits > 0:
+			self.cost_history.append(credits)
+			if len(self.cost_history) > 1000:
+				self.cost_history.pop(0)
+
+		self.performance_history.append((current_time, duration, tokens))
+		if len(self.performance_history) > 1000:
+			self.performance_history.pop(0)
+
+		# Update baseline metrics periodically
+		if self.total_requests % 100 == 0:
+			self.update_baseline_metrics()
+
 		# Trigger save callback
 		if self.on_change:
 			self.on_change()
 
 	def record_error(self) -> None:
 		"""Record a failed request."""
+		current_time = time.time()
 		self.errors_count += 1
-		
+
+		# Advanced analytics tracking
+		self.error_timestamps.append(current_time)
+		if len(self.error_timestamps) > 1000:
+			self.error_timestamps.pop(0)
+
 		# Trigger save callback
 		if self.on_change:
 			self.on_change()
@@ -99,6 +133,8 @@ class GlobalMetrics:
 			"avg_ttft": self.get_average_ttft(),
 			"p95_ttft": self.get_p95_ttft(),
 			"uptime_seconds": self.get_uptime_seconds(),
+			"baseline_metrics": self.baseline_metrics,
+			"trend_analysis": self.trend_analysis,
 		}
 
 	def from_dict(self, data: Dict[str, Any]) -> None:
@@ -113,6 +149,170 @@ class GlobalMetrics:
 		self.total_completion_tokens = data.get("total_completion_tokens", 0)
 		self.total_credits_used = data.get("total_credits_used", 0.0)
 		self.errors_count = data.get("errors_count", 0)
+		self.baseline_metrics = data.get("baseline_metrics", {})
+		self.trend_analysis = data.get("trend_analysis", {})
+
+	# Advanced Analytics Methods
+
+	def detect_anomalies(self, window_size: int = 50) -> list:
+		"""Detect anomalies in response times using statistical methods.
+
+		Returns:
+			List of (timestamp, response_time, anomaly_score) tuples for detected anomalies
+		"""
+		if len(self.response_times) < window_size:
+			return []
+
+		anomalies = []
+		recent_times = self.response_times[-window_size:]
+		mean = sum(recent_times) / len(recent_times)
+		std_dev = (sum((x - mean) ** 2 for x in recent_times) / len(recent_times)) ** 0.5
+
+		threshold = mean + 3 * std_dev  # 3-sigma rule
+
+		for i, response_time in enumerate(self.response_times[-window_size:]):
+			if response_time > threshold:
+				timestamp = self.request_timestamps[-(window_size - i)] if len(self.request_timestamps) >= window_size else time.time()
+				anomaly_score = (response_time - mean) / std_dev if std_dev > 0 else 0
+				anomalies.append((timestamp, response_time, anomaly_score))
+
+		return anomalies
+
+	def predict_future_load(self, minutes_ahead: int = 5) -> dict:
+		"""Predict future system load based on recent trends.
+
+		Returns:
+			Dict with predicted requests_per_minute, tokens_per_minute, etc.
+		"""
+		if len(self.request_timestamps) < 10:
+			return {"requests_per_minute": 0, "tokens_per_minute": 0, "confidence": 0}
+
+		# Simple linear regression on request intervals
+		timestamps = self.request_timestamps[-100:]  # Last 100 requests
+		if len(timestamps) < 2:
+			return {"requests_per_minute": 0, "tokens_per_minute": 0, "confidence": 0}
+
+		# Calculate request rate
+		time_span = timestamps[-1] - timestamps[0]
+		request_rate = len(timestamps) / (time_span / 60) if time_span > 0 else 0
+
+		# Calculate token rate
+		recent_tokens = self.performance_history[-len(timestamps):]
+		total_tokens = sum(t[2] for t in recent_tokens if len(t) > 2)
+		token_rate = total_tokens / (time_span / 60) if time_span > 0 else 0
+
+		# Simple prediction: assume current rate continues
+		predicted_requests = request_rate
+		predicted_tokens = token_rate
+
+		# Confidence based on data points
+		confidence = min(len(timestamps) / 50, 1.0)
+
+		return {
+			"requests_per_minute": predicted_requests,
+			"tokens_per_minute": predicted_tokens,
+			"confidence": confidence
+		}
+
+	def calculate_cost_efficiency(self) -> dict:
+		"""Calculate cost efficiency metrics.
+
+		Returns:
+			Dict with cost per token, cost per request, efficiency trends
+		"""
+		if self.total_requests == 0 or self.total_credits_used == 0:
+			return {"cost_per_token": 0, "cost_per_request": 0, "efficiency_trend": "insufficient_data"}
+
+		cost_per_token = self.total_credits_used / self.total_tokens if self.total_tokens > 0 else 0
+		cost_per_request = self.total_credits_used / self.total_requests
+
+		# Analyze efficiency trend (are costs decreasing over time?)
+		if len(self.cost_history) >= 10:
+			recent_avg = sum(self.cost_history[-10:]) / 10
+			older_avg = sum(self.cost_history[-20:-10]) / 10 if len(self.cost_history) >= 20 else recent_avg
+			if older_avg > 0:
+				trend = (recent_avg - older_avg) / older_avg
+				if trend < -0.05:
+					efficiency_trend = "improving"
+				elif trend > 0.05:
+					efficiency_trend = "decreasing"
+				else:
+					efficiency_trend = "stable"
+			else:
+				efficiency_trend = "stable"
+		else:
+			efficiency_trend = "insufficient_data"
+
+		return {
+			"cost_per_token": cost_per_token,
+			"cost_per_request": cost_per_request,
+			"efficiency_trend": efficiency_trend
+		}
+
+	def get_performance_trends(self) -> dict:
+		"""Analyze performance trends over time.
+
+		Returns:
+			Dict with trend analysis for response times, errors, throughput
+		"""
+		if len(self.performance_history) < 20:
+			return {"response_time_trend": "insufficient_data", "error_rate_trend": "insufficient_data", "throughput_trend": "insufficient_data"}
+
+		# Split data into two halves for comparison
+		half_point = len(self.performance_history) // 2
+		first_half = self.performance_history[:half_point]
+		second_half = self.performance_history[half_point:]
+
+		# Response time trend
+		first_avg_rt = sum(t[1] for t in first_half) / len(first_half)
+		second_avg_rt = sum(t[1] for t in second_half) / len(second_half)
+		rt_trend = "stable"
+		if second_avg_rt < first_avg_rt * 0.95:
+			rt_trend = "improving"
+		elif second_avg_rt > first_avg_rt * 1.05:
+			rt_trend = "degrading"
+
+		# Error rate trend (using error timestamps)
+		total_first = len(first_half)
+		total_second = len(second_half)
+		errors_first = sum(1 for t in self.error_timestamps if any(abs(t - p[0]) < 300 for p in first_half))  # Within 5 min
+		errors_second = sum(1 for t in self.error_timestamps if any(abs(t - p[0]) < 300 for p in second_half))
+		error_rate_first = errors_first / total_first if total_first > 0 else 0
+		error_rate_second = errors_second / total_second if total_second > 0 else 0
+		error_trend = "stable"
+		if error_rate_second < error_rate_first * 0.8:
+			error_trend = "improving"
+		elif error_rate_second > error_rate_first * 1.2:
+			error_trend = "degrading"
+
+		# Throughput trend (requests per minute)
+		time_first = first_half[-1][0] - first_half[0][0] if first_half else 1
+		time_second = second_half[-1][0] - second_half[0][0] if second_half else 1
+		throughput_first = len(first_half) / (time_first / 60)
+		throughput_second = len(second_half) / (time_second / 60)
+		throughput_trend = "stable"
+		if throughput_second > throughput_first * 1.1:
+			throughput_trend = "increasing"
+		elif throughput_second < throughput_first * 0.9:
+			throughput_trend = "decreasing"
+
+		return {
+			"response_time_trend": rt_trend,
+			"error_rate_trend": error_trend,
+			"throughput_trend": throughput_trend
+		}
+
+	def update_baseline_metrics(self) -> None:
+		"""Update baseline performance metrics for anomaly detection."""
+		if len(self.response_times) >= 100:
+			self.baseline_metrics = {
+				"avg_response_time": self.get_average_response_time(),
+				"p95_response_time": self.get_p95_response_time(),
+				"avg_ttft": self.get_average_ttft(),
+				"p95_ttft": self.get_p95_ttft(),
+				"error_rate": self.errors_count / self.total_requests if self.total_requests > 0 else 0,
+				"last_updated": time.time()
+			}
 
 
 class MetricsPersistence:

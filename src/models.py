@@ -3,7 +3,7 @@
 import time
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Optional, List
+from typing import TYPE_CHECKING, Optional, List, Tuple
 
 if TYPE_CHECKING:
 	from .providers.base import Provider
@@ -17,11 +17,13 @@ class Message:
 
 @dataclass
 class RateLimitTracker:
-	"""Tracks rate limiting and usage for an API key with calendar-based periods."""
+	"""Tracks rate limiting and usage for an API key with calendar-based periods and advanced algorithms."""
 	limits: dict = field(default_factory=dict)  # {"requests_per_minute": 3500, "tokens_per_day": 90000, "credits_per_day": 1000, ...}
 	calendar_usage: dict = field(default_factory=dict)  # {period: count} for requests/tokens with calendar resets
 	calendar_reset_times: dict = field(default_factory=dict)  # {period: next_reset_timestamp}
-	token_multiplier: float = 1.0  # How much each token counts (e.g., 2.0 = counts as 2x)
+	token_multiplier: float = 1.0  # How much each token counts (e.g., 2.0 = counts as 2x) - legacy, use in/out multipliers
+	in_token_multiplier: float = 1.0  # How much each input token counts (e.g., 2.0 = counts as 2x)
+	out_token_multiplier: float = 1.0  # How much each output token counts (e.g., 2.0 = counts as 2x)
 	request_multiplier: float = 1.0  # How much each request counts (e.g., 2.0 = counts as 2x)
 	credits_per_token: float = 0.0  # How many credits per token (0 = disabled)
 	credits_per_million_tokens: float = 0.0  # How many credits per million tokens (0 = disabled)
@@ -34,9 +36,23 @@ class RateLimitTracker:
 	credit_maxes: dict = field(default_factory=dict)  # {"minute": 100, "hour": 1000, ...} - max credits that can accumulate (provider-level)
 	credit_balance: dict = field(default_factory=dict)  # {"minute": 50.0, "hour": 500.0, ...} - current credit balance per interval
 
+	# Advanced rate limiting features
+	token_bucket_capacity: float = 100.0  # Maximum tokens in bucket for burst handling
+	token_bucket_fill_rate: float = 10.0  # Tokens added per second
+	current_bucket_tokens: float = 100.0  # Current tokens in bucket
+	last_bucket_update: float = field(default_factory=time.time)  # Last time bucket was updated
+
+	sliding_window_requests: List[float] = field(default_factory=list)  # Timestamps of recent requests for sliding window
+	sliding_window_tokens: List[float] = field(default_factory=list)  # Timestamps of recent tokens for sliding window
+	sliding_window_max_age: int = 60  # Maximum age in seconds for sliding window (default 1 minute)
+
+	# Analytics and prediction
+	request_history: List[Tuple[float, int]] = field(default_factory=list)  # (timestamp, tokens) for analytics
+	rate_limit_predictions: dict = field(default_factory=dict)  # Cached predictions for performance
+
 	def add_request(self, tokens: int = 0, in_tokens: int = 0, out_tokens: int = 0, credits: float = 0.0) -> None:
-		"""Record a request with calendar-based period tracking.
-		
+		"""Record a request with calendar-based period tracking, sliding window, and token bucket.
+
 		Args:
 			tokens: Total tokens (legacy, used if in_tokens/out_tokens not provided)
 			in_tokens: Number of input tokens
@@ -45,25 +61,25 @@ class RateLimitTracker:
 		"""
 		current_time = time.time()
 		now = datetime.fromtimestamp(current_time, tz=timezone.utc)
-		
+
 		# Calculate tokens
 		if in_tokens > 0 or out_tokens > 0:
 			total_tokens = in_tokens + out_tokens
-			counted_in = int(in_tokens * self.token_multiplier)
-			counted_out = int(out_tokens * self.token_multiplier)
-			counted_total = int(total_tokens * self.token_multiplier)
+			counted_in = int(in_tokens * self.in_token_multiplier)
+			counted_out = int(out_tokens * self.out_token_multiplier)
+			counted_total = counted_in + counted_out  # Use separate multipliers for total
 		elif tokens > 0:
-			counted_total = int(tokens * self.token_multiplier)
+			counted_total = int(tokens * self.token_multiplier)  # Fallback to legacy multiplier
 			counted_in = 0
 			counted_out = 0
 		else:
 			counted_total = 0
 			counted_in = 0
 			counted_out = 0
-		
+
 		# Calculate requests
 		counted_requests = int(self.request_multiplier)
-		
+
 		# Calculate credits
 		if credits <= 0:
 			credits = 0.0
@@ -85,31 +101,38 @@ class RateLimitTracker:
 			# Request rate
 			if self.credits_per_request > 0:
 				credits += self.credits_per_request
-		
+
+		# Update sliding window tracking
+		self.add_sliding_window_request(counted_total)
+
+		# Consume from token bucket (use total tokens as cost, but could be customized)
+		bucket_cost = max(1.0, counted_total / 100.0)  # Scale token count to bucket tokens
+		self.consume_bucket_tokens(bucket_cost)
+
 		# Update calendar usage for all periods
 		for limit_key in self.limits.keys():
 			if "_per_" not in limit_key:
 				continue
-			
+
 			parts = limit_key.split("_per_")
 			if len(parts) != 2:
 				continue
-			
+
 			limit_type, period = parts
 			if period not in ("minute", "hour", "day", "month"):
 				continue
-			
+
 			# Initialize period if needed
 			if period not in self.calendar_usage:
 				self.calendar_usage[period] = {"requests": 0, "tokens": 0, "in_tokens": 0, "out_tokens": 0, "credits": 0.0}
 				self.calendar_reset_times[period] = self._get_calendar_reset_time(period, now).timestamp()
-			
+
 			# Reset if needed
 			if current_time >= self.calendar_reset_times[period]:
 				self.calendar_usage[period] = {"requests": 0, "tokens": 0, "in_tokens": 0, "out_tokens": 0, "credits": 0.0}
 				next_reset = self._get_calendar_reset_time(period, datetime.fromtimestamp(current_time, tz=timezone.utc))
 				self.calendar_reset_times[period] = next_reset.timestamp()
-			
+
 			# Add usage
 			if limit_type == "requests":
 				self.calendar_usage[period]["requests"] += counted_requests
@@ -139,10 +162,15 @@ class RateLimitTracker:
 
 
 
-	def is_rate_limited(self) -> bool:
-		"""Check if rate limited by any configured limit."""
+	def is_rate_limited(self, tokens_needed: float = 1.0) -> bool:
+		"""Check if rate limited by any configured limit, including token bucket."""
 		current_time = time.time()
-		
+
+		# Check token bucket first (fast check)
+		bucket_cost = max(1.0, tokens_needed / 100.0)  # Scale token count to bucket tokens
+		if self.get_bucket_tokens_available() < bucket_cost:
+			return True
+
 		for limit_key, limit_value in self.limits.items():
 			if "_per_" not in limit_key:
 				continue
@@ -154,18 +182,18 @@ class RateLimitTracker:
 			limit_type, period = parts
 			if period not in ("minute", "hour", "day", "month"):
 				continue
-			
+
 			# Check if reset needed
 			if period in self.calendar_reset_times and current_time >= self.calendar_reset_times[period]:
 				now = datetime.fromtimestamp(current_time, tz=timezone.utc)
-				self.calendar_usage[period] = {"requests": 0, "tokens": 0, "prompt_tokens": 0, "completion_tokens": 0, "credits": 0.0}
+				self.calendar_usage[period] = {"requests": 0, "tokens": 0, "in_tokens": 0, "out_tokens": 0, "credits": 0.0}
 				next_reset = self._get_calendar_reset_time(period, now)
 				self.calendar_reset_times[period] = next_reset.timestamp()
-			
+
 			# Get current usage
 			if period not in self.calendar_usage:
 				continue
-			
+
 			if limit_type == "requests":
 				count = self.calendar_usage[period]["requests"]
 			elif limit_type == "tokens":
@@ -178,7 +206,7 @@ class RateLimitTracker:
 				count = self.calendar_usage[period]["credits"]
 			else:
 				continue
-			
+
 			if count >= limit_value:
 				return True
 
@@ -357,6 +385,166 @@ class RateLimitTracker:
 		self.update_credit_balance()
 		return dict(self.credit_balance)
 
+	# Advanced Rate Limiting Methods
+
+	def update_token_bucket(self) -> None:
+		"""Update token bucket with tokens accumulated since last update."""
+		current_time = time.time()
+		time_passed = current_time - self.last_bucket_update
+		tokens_to_add = time_passed * self.token_bucket_fill_rate
+		self.current_bucket_tokens = min(self.token_bucket_capacity, self.current_bucket_tokens + tokens_to_add)
+		self.last_bucket_update = current_time
+
+	def consume_bucket_tokens(self, tokens: float) -> bool:
+		"""Try to consume tokens from bucket. Returns True if successful."""
+		self.update_token_bucket()
+		if self.current_bucket_tokens >= tokens:
+			self.current_bucket_tokens -= tokens
+			return True
+		return False
+
+	def get_bucket_tokens_available(self) -> float:
+		"""Get current available tokens in bucket."""
+		self.update_token_bucket()
+		return self.current_bucket_tokens
+
+	def add_sliding_window_request(self, tokens: int = 1) -> None:
+		"""Add a request to the sliding window tracking."""
+		current_time = time.time()
+		self.sliding_window_requests.append(current_time)
+		self.sliding_window_tokens.append(current_time)
+
+		# Clean old entries
+		cutoff_time = current_time - self.sliding_window_max_age
+		self.sliding_window_requests = [t for t in self.sliding_window_requests if t > cutoff_time]
+		self.sliding_window_tokens = [t for t in self.sliding_window_tokens if t > cutoff_time]
+
+		# Keep history for analytics (last 1000 requests)
+		self.request_history.append((current_time, tokens))
+		if len(self.request_history) > 1000:
+			self.request_history.pop(0)
+
+	def get_sliding_window_rate(self, window_seconds: int = 60) -> float:
+		"""Get requests per second in the sliding window."""
+		current_time = time.time()
+		cutoff_time = current_time - window_seconds
+		recent_requests = [t for t in self.sliding_window_requests if t > cutoff_time]
+		return len(recent_requests) / window_seconds if window_seconds > 0 else 0.0
+
+	def get_sliding_window_token_rate(self, window_seconds: int = 60) -> float:
+		"""Get tokens per second in the sliding window."""
+		current_time = time.time()
+		cutoff_time = current_time - window_seconds
+		recent_tokens = [t for t in self.sliding_window_tokens if t > cutoff_time]
+		return len(recent_tokens) / window_seconds if window_seconds > 0 else 0.0
+
+	def predict_rate_limit_exceedance(self, tokens_needed: int = 1, time_ahead: int = 60) -> float:
+		"""Predict when rate limit will be exceeded. Returns seconds until exceedance, or -1 if safe."""
+		if not self.request_history:
+			return -1.0  # No history, assume safe
+
+		# Simple linear regression on recent request rates
+		recent_history = self.request_history[-min(50, len(self.request_history)):]
+		if len(recent_history) < 2:
+			return -1.0
+
+		# Calculate average rate from history
+		total_requests = len(recent_history)
+		time_span = recent_history[-1][0] - recent_history[0][0]
+		if time_span <= 0:
+			return -1.0
+
+		avg_rate = total_requests / time_span
+
+		# Check each limit
+		for limit_key, limit_value in self.limits.items():
+			if "_per_" not in limit_key:
+				continue
+
+			parts = limit_key.split("_per_")
+			if len(parts) != 2:
+				continue
+
+			limit_type, period = parts
+			window_seconds = self._get_time_window_seconds(period)
+
+			# Project forward
+			projected_requests = avg_rate * time_ahead
+			current_usage = self.get_usage_stats().get(limit_key, {}).get("used", 0)
+
+			if current_usage + projected_requests > limit_value:
+				# Calculate time to exceedance
+				remaining_capacity = limit_value - current_usage
+				time_to_exceed = remaining_capacity / avg_rate if avg_rate > 0 else float('inf')
+				return min(time_to_exceed, time_ahead)
+
+		return -1.0  # Safe within prediction window
+
+	def get_rate_limit_efficiency(self) -> float:
+		"""Get efficiency score (0-1) of rate limit usage patterns."""
+		if not self.request_history:
+			return 1.0  # No data, assume perfect
+
+		# Analyze burstiness vs steady usage
+		recent_requests = [t[0] for t in self.request_history[-100:]]
+		if len(recent_requests) < 10:
+			return 1.0
+
+		# Calculate coefficient of variation in inter-arrival times
+		inter_arrivals = []
+		for i in range(1, len(recent_requests)):
+			inter_arrivals.append(recent_requests[i] - recent_requests[i-1])
+
+		if not inter_arrivals:
+			return 1.0
+
+		mean_interval = sum(inter_arrivals) / len(inter_arrivals)
+		variance = sum((x - mean_interval) ** 2 for x in inter_arrivals) / len(inter_arrivals)
+		std_dev = variance ** 0.5
+
+		# Lower CV means more steady usage (better for rate limits)
+		cv = std_dev / mean_interval if mean_interval > 0 else 0
+		efficiency = max(0.0, min(1.0, 1.0 - cv))  # Convert to 0-1 scale
+
+		return efficiency
+
+	def get_advanced_usage_stats(self) -> dict:
+		"""Get advanced usage statistics including predictions and efficiency."""
+		basic_stats = self.get_usage_stats()
+
+		advanced_stats = {
+			"token_bucket": {
+				"available_tokens": self.get_bucket_tokens_available(),
+				"capacity": self.token_bucket_capacity,
+				"fill_rate": self.token_bucket_fill_rate,
+			},
+			"sliding_window": {
+				"requests_per_second": self.get_sliding_window_rate(),
+				"tokens_per_second": self.get_sliding_window_token_rate(),
+				"window_size_seconds": self.sliding_window_max_age,
+			},
+			"predictions": {
+				"seconds_until_limit": self.predict_rate_limit_exceedance(),
+				"efficiency_score": self.get_rate_limit_efficiency(),
+			},
+			"analytics": {
+				"total_requests_tracked": len(self.request_history),
+				"avg_tokens_per_request": sum(t[1] for t in self.request_history) / len(self.request_history) if self.request_history else 0,
+			}
+		}
+
+		# Merge with basic stats
+		for key, value in advanced_stats.items():
+			if key in basic_stats:
+				if isinstance(basic_stats[key], dict) and isinstance(value, dict):
+					basic_stats[key].update(value)
+				else:
+					basic_stats[key] = value
+			else:
+				basic_stats[key] = value
+
+		return basic_stats
+
 
 @dataclass
 class CircuitBreaker:
@@ -465,10 +653,12 @@ class ApiKeyRotation:
 		for key in self.api_keys:
 			self.rate_limiters[key].limits = limits.copy()
 
-	def set_multipliers(self, token_multiplier: float = 1.0, request_multiplier: float = 1.0) -> None:
+	def set_multipliers(self, token_multiplier: float = 1.0, in_token_multiplier: float = 1.0, out_token_multiplier: float = 1.0, request_multiplier: float = 1.0) -> None:
 		"""Set token and request multipliers for all API keys."""
 		for key in self.api_keys:
-			self.rate_limiters[key].token_multiplier = token_multiplier
+			self.rate_limiters[key].token_multiplier = token_multiplier  # Keep for backward compatibility
+			self.rate_limiters[key].in_token_multiplier = in_token_multiplier
+			self.rate_limiters[key].out_token_multiplier = out_token_multiplier
 			self.rate_limiters[key].request_multiplier = request_multiplier
 
 	def set_credit_rates(self, credits_per_token: float = 0.0, credits_per_million_tokens: float = 0.0, 
@@ -596,7 +786,7 @@ class ApiKeyRotation:
 					"enabled": self.disabled_keys.get(key) is None,
 					"disabled_since": self.disabled_keys.get(key),
 					"rate_limited": self.rate_limiters[key].is_rate_limited(),
-					"usage": self.rate_limiters[key].get_usage_stats(),
+					"usage": self.rate_limiters[key].get_advanced_usage_stats(),
 				}
 				for i, key in enumerate(self.api_keys)
 			]
@@ -840,14 +1030,21 @@ class ProviderInstance:
 
 @dataclass
 class Model:
-	"""Represents a model available through the proxy."""
+	"""Represents a model available through the proxy with advanced routing algorithms."""
 	id: str
 	provider_instances: list[ProviderInstance] = field(default_factory=list)
 	created: int = 1234567890
 	owned_by: str = "system"
 
+	# Advanced routing configuration
+	routing_algorithm: str = "health_priority"  # Options: health_priority, round_robin, least_loaded, weighted_random, cost_optimized, predictive
+	load_balance_weights: dict = field(default_factory=dict)  # Provider name -> weight for weighted random
+	cost_optimization_enabled: bool = False
+	predictive_routing_enabled: bool = False
+	round_robin_index: int = field(default=0, init=False, repr=False)  # For round-robin routing
+
 	def get_available_providers(self) -> list[ProviderInstance]:
-		"""Return enabled providers sorted by health score with relative priority ranking."""
+		"""Return enabled providers using the configured routing algorithm."""
 		available = [
 			pi
 			for pi in self.provider_instances
@@ -857,29 +1054,155 @@ class Model:
 		for pi in available:
 			if not pi.enabled and pi.should_retry():
 				pi.enabled = True
-		
+
+		if not available:
+			return available
+
+		# Apply routing algorithm
+		if self.routing_algorithm == "round_robin":
+			return self._route_round_robin(available)
+		elif self.routing_algorithm == "least_loaded":
+			return self._route_least_loaded(available)
+		elif self.routing_algorithm == "weighted_random":
+			return self._route_weighted_random(available)
+		elif self.routing_algorithm == "cost_optimized":
+			return self._route_cost_optimized(available)
+		elif self.routing_algorithm == "predictive":
+			return self._route_predictive(available)
+		else:  # Default: health_priority
+			return self._route_health_priority(available)
+
+	def _route_health_priority(self, providers: list[ProviderInstance]) -> list[ProviderInstance]:
+		"""Route based on health score with relative priority ranking (original algorithm)."""
 		# Calculate relative priority ranking: lower priority = better rank = higher bonus
-		# Providers are ranked 0 to N-1 based on their priority value
-		if available:
-			sorted_by_priority = sorted(available, key=lambda pi: pi.priority)
-			# Use id() to track rank since ProviderInstance isn't hashable
-			priority_rank = {id(pi): idx for idx, pi in enumerate(sorted_by_priority)}
-			
-			# Number of providers determines bonus granularity
-			num_providers = len(available)
-			
-			# Calculate adjusted scores with priority bonuses
-			def score_with_priority(pi: ProviderInstance) -> float:
-				base_score = pi.get_health_score()
-				rank = priority_rank[id(pi)]
-				# Best priority (lowest value) gets highest bonus, worst priority gets negative bonus
-				# Formula: bonus ranges from +(num_providers-1) to -(num_providers-1)
-				priority_bonus = (num_providers - 1) - (2 * rank)
-				return base_score + priority_bonus
-			
-			return sorted(available, key=score_with_priority, reverse=True)
-		
-		return available
+		sorted_by_priority = sorted(providers, key=lambda pi: pi.priority)
+		# Use id() to track rank since ProviderInstance isn't hashable
+		priority_rank = {id(pi): idx for idx, pi in enumerate(sorted_by_priority)}
+
+		# Number of providers determines bonus granularity
+		num_providers = len(providers)
+
+		# Calculate adjusted scores with priority bonuses
+		def score_with_priority(pi: ProviderInstance) -> float:
+			base_score = pi.get_health_score()
+			rank = priority_rank[id(pi)]
+			# Best priority (lowest value) gets highest bonus, worst priority gets negative bonus
+			# Formula: bonus ranges from +(num_providers-1) to -(num_providers-1)
+			priority_bonus = (num_providers - 1) - (2 * rank)
+			return base_score + priority_bonus
+
+		return sorted(providers, key=score_with_priority, reverse=True)
+
+	def _route_round_robin(self, providers: list[ProviderInstance]) -> list[ProviderInstance]:
+		"""Simple round-robin routing through available providers."""
+		if not providers:
+			return providers
+
+		# Rotate the list starting from current index
+		rotated = providers[self.round_robin_index:] + providers[:self.round_robin_index]
+		self.round_robin_index = (self.round_robin_index + 1) % len(providers)
+		return rotated
+
+	def _route_least_loaded(self, providers: list[ProviderInstance]) -> list[ProviderInstance]:
+		"""Route to least loaded providers based on recent request rate."""
+		def load_score(pi: ProviderInstance) -> float:
+			if pi.api_key_rotation and pi.api_key_rotation.rate_limiters:
+				# Use sliding window rate as load indicator
+				total_rate = 0
+				for limiter in pi.api_key_rotation.rate_limiters.values():
+					total_rate += limiter.get_sliding_window_rate()
+				return total_rate
+			return 0.0  # No rate data = assume unloaded
+
+		return sorted(providers, key=load_score)
+
+	def _route_weighted_random(self, providers: list[ProviderInstance]) -> list[ProviderInstance]:
+		"""Route using weighted random selection based on configured weights."""
+		import random
+
+		if not providers:
+			return providers
+
+		# Get weights, default to 1.0 if not specified
+		weights = []
+		for pi in providers:
+			weight = self.load_balance_weights.get(pi.provider.name, 1.0)
+			weights.append(max(0.1, weight))  # Minimum weight of 0.1
+
+		# Select provider based on weights
+		total_weight = sum(weights)
+		if total_weight <= 0:
+			return providers  # Fallback to original order
+
+		rand = random.uniform(0, total_weight)
+		cumulative = 0
+		for i, weight in enumerate(weights):
+			cumulative += weight
+			if rand <= cumulative:
+				# Put selected provider first, then others in random order
+				selected = providers[i]
+				remaining = [p for p in providers if p != selected]
+				random.shuffle(remaining)
+				return [selected] + remaining
+
+		# Fallback
+		return providers
+
+	def _route_cost_optimized(self, providers: list[ProviderInstance]) -> list[ProviderInstance]:
+		"""Route to lowest cost providers based on credit rates."""
+		def cost_score(pi: ProviderInstance) -> float:
+			if not pi.api_key_rotation or not pi.api_key_rotation.rate_limiters:
+				return float('inf')  # No cost data = highest cost
+
+			# Calculate average cost per token across all keys
+			total_cost = 0
+			key_count = 0
+			for limiter in pi.api_key_rotation.rate_limiters.values():
+				# Use credits per token as cost indicator
+				cost = (limiter.credits_per_token or 0) + (limiter.credits_per_million_tokens or 0) / 1_000_000
+				if cost > 0:
+					total_cost += cost
+					key_count += 1
+
+			return total_cost / key_count if key_count > 0 else float('inf')
+
+		return sorted(providers, key=cost_score)
+
+	def _route_predictive(self, providers: list[ProviderInstance]) -> list[ProviderInstance]:
+		"""Route based on predictive performance analysis."""
+		def predictive_score(pi: ProviderInstance) -> float:
+			base_score = pi.get_health_score()
+
+			# Boost score based on recent performance trends
+			if len(pi.speed_tracker.response_times) >= 10:
+				recent_times = pi.speed_tracker.response_times[-10:]
+				older_times = pi.speed_tracker.response_times[-20:-10] if len(pi.speed_tracker.response_times) >= 20 else recent_times
+
+				recent_avg = sum(recent_times) / len(recent_times)
+				older_avg = sum(older_times) / len(older_times)
+
+				# If performance is improving (lower response time), boost score
+				if recent_avg < older_avg:
+					improvement_ratio = older_avg / recent_avg if recent_avg > 0 else 2.0
+					trend_bonus = min(improvement_ratio - 1, 1.0) * 20  # Up to 20 points bonus
+					base_score += trend_bonus
+
+			# Consider rate limit efficiency
+			if pi.api_key_rotation and pi.api_key_rotation.rate_limiters:
+				total_efficiency = 0
+				limiter_count = 0
+				for limiter in pi.api_key_rotation.rate_limiters.values():
+					total_efficiency += limiter.get_rate_limit_efficiency()
+					limiter_count += 1
+
+				if limiter_count > 0:
+					avg_efficiency = total_efficiency / limiter_count
+					efficiency_bonus = (avg_efficiency - 0.5) * 40  # Efficiency bonus/penalty
+					base_score += efficiency_bonus
+
+			return base_score
+
+		return sorted(providers, key=predictive_score, reverse=True)
 
 	def get_best_provider(self) -> Optional[ProviderInstance]:
 		"""Get the single best provider based on health and speed."""

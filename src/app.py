@@ -479,6 +479,15 @@ async def health_check():
 			"tokens_per_second": global_metrics.total_completion_tokens / global_metrics.get_uptime_seconds() if global_metrics.get_uptime_seconds() > 0 else 0.0,
 		}
 
+		# Add advanced analytics
+		global_stats["advanced_analytics"] = {
+			"anomalies_detected": len(global_metrics.detect_anomalies()),
+			"load_prediction": global_metrics.predict_future_load(),
+			"cost_efficiency": global_metrics.calculate_cost_efficiency(),
+			"performance_trends": global_metrics.get_performance_trends(),
+			"baseline_metrics": global_metrics.baseline_metrics,
+		}
+
 	# Determine overall system status
 	if not models or len(unique_providers) == 0:
 		system_status = "degraded"
@@ -504,6 +513,138 @@ async def health_check():
 			"avg_provider_health_score": round(avg_health_score, 2),
 			"avg_providers_per_model": round(avg_providers_per_model, 2),
 		},
+	}
+
+
+@app.post("/v1/models/{model_id}/routing")
+async def configure_routing(model_id: str, config: dict):
+	"""Configure routing algorithm for a specific model."""
+	if registry is None:
+		raise HTTPException(status_code=500, detail="Registry not initialized")
+
+	model = registry.get_model(model_id)
+	if not model:
+		raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
+
+	# Update routing configuration
+	if "routing_algorithm" in config:
+		valid_algorithms = ["health_priority", "round_robin", "least_loaded", "weighted_random", "cost_optimized", "predictive"]
+		if config["routing_algorithm"] not in valid_algorithms:
+			raise HTTPException(status_code=400, detail=f"Invalid routing algorithm. Must be one of: {valid_algorithms}")
+		model.routing_algorithm = config["routing_algorithm"]
+
+	if "load_balance_weights" in config:
+		model.load_balance_weights = config["load_balance_weights"]
+
+	if "cost_optimization_enabled" in config:
+		model.cost_optimization_enabled = config["cost_optimization_enabled"]
+
+	if "predictive_routing_enabled" in config:
+		model.predictive_routing_enabled = config["predictive_routing_enabled"]
+
+	return {
+		"model_id": model_id,
+		"routing_algorithm": model.routing_algorithm,
+		"load_balance_weights": model.load_balance_weights,
+		"cost_optimization_enabled": model.cost_optimization_enabled,
+		"predictive_routing_enabled": model.predictive_routing_enabled,
+	}
+
+
+@app.get("/v1/models/{model_id}/routing")
+async def get_routing_config(model_id: str):
+	"""Get current routing configuration for a model."""
+	if registry is None:
+		raise HTTPException(status_code=500, detail="Registry not initialized")
+
+	model = registry.get_model(model_id)
+	if not model:
+		raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
+
+	return {
+		"model_id": model_id,
+		"routing_algorithm": model.routing_algorithm,
+		"load_balance_weights": model.load_balance_weights,
+		"cost_optimization_enabled": model.cost_optimization_enabled,
+		"predictive_routing_enabled": model.predictive_routing_enabled,
+	}
+
+
+@app.get("/v1/analytics")
+async def get_advanced_analytics():
+	"""Get detailed advanced analytics data."""
+	if registry is None:
+		raise HTTPException(status_code=500, detail="Registry not initialized")
+
+	if not global_metrics:
+		return {"error": "Global metrics not available"}
+
+	# Get detailed analytics
+	anomalies = global_metrics.detect_anomalies()
+	load_prediction = global_metrics.predict_future_load()
+	cost_efficiency = global_metrics.calculate_cost_efficiency()
+	performance_trends = global_metrics.get_performance_trends()
+
+	# Get provider-level analytics
+	provider_analytics = {}
+	for model in registry.list_models():
+		for pi in model.provider_instances:
+			provider_key = f"{model.id}:{pi.provider.name}"
+			provider_analytics[provider_key] = {
+				"model": model.id,
+				"provider": pi.provider.name,
+				"health_score": pi.get_health_score(),
+				"avg_response_time": pi.speed_tracker.get_average_time(),
+				"tokens_per_second": pi.speed_tracker.get_tokens_per_second(),
+				"circuit_breaker_state": pi.circuit_breaker.state,
+				"consecutive_failures": pi.consecutive_failures,
+				"enabled": pi.enabled,
+			}
+
+	# Get rate limiter analytics
+	rate_limiter_analytics = {}
+	for model in registry.list_models():
+		for pi in model.provider_instances:
+			if pi.api_key_rotation:
+				for key, limiter in pi.api_key_rotation.rate_limiters.items():
+					key_hash = hash(key) % 10000  # Simple obfuscation for security
+					rate_limiter_analytics[f"{model.id}:{pi.provider.name}:{key_hash}"] = {
+						"model": model.id,
+						"provider": pi.provider.name,
+						"rate_limited": limiter.is_rate_limited(),
+						"efficiency_score": limiter.get_rate_limit_efficiency(),
+						"seconds_until_limit": limiter.predict_rate_limit_exceedance(),
+						"token_bucket_available": limiter.get_bucket_tokens_available(),
+					}
+
+	return {
+		"timestamp": int(time.time()),
+		"global_metrics": {
+			"total_requests": global_metrics.total_requests,
+			"total_tokens": global_metrics.total_tokens,
+			"total_errors": global_metrics.errors_count,
+			"uptime_seconds": global_metrics.get_uptime_seconds(),
+			"avg_response_time": global_metrics.get_average_response_time(),
+			"p95_response_time": global_metrics.get_p95_response_time(),
+			"avg_ttft": global_metrics.get_average_ttft(),
+			"p95_ttft": global_metrics.get_p95_ttft(),
+		},
+		"anomaly_detection": {
+			"anomalies_count": len(anomalies),
+			"recent_anomalies": anomalies[-10:] if anomalies else [],  # Last 10 anomalies
+		},
+		"predictions": {
+			"load_forecast": load_prediction,
+		},
+		"cost_analysis": cost_efficiency,
+		"performance_trends": performance_trends,
+		"provider_analytics": provider_analytics,
+		"rate_limiter_analytics": rate_limiter_analytics,
+		"system_health": {
+			"models_count": len(registry.list_models()),
+			"total_providers": len(provider_analytics),
+			"enabled_providers": sum(1 for p in provider_analytics.values() if p["enabled"]),
+		}
 	}
 
 

@@ -276,6 +276,8 @@ class ModelRegistry:
 				# Multipliers are at instance level
 				multiplier = instance_config.get("multiplier", 1.0)
 				token_multiplier = instance_config.get("token_multiplier", 1.0)
+				in_token_multiplier = instance_config.get("in_token_multiplier", 1.0)
+				out_token_multiplier = instance_config.get("out_token_multiplier", 1.0)
 				request_multiplier = instance_config.get("request_multiplier", 1.0)
 
 				# Merge: provider defaults + instance overrides + multipliers (for limits)
@@ -305,8 +307,8 @@ class ModelRegistry:
 						api_key_rotation.set_rate_limits(rate_limits)
 
 					# Set usage multipliers (how much each token/request counts)
-					if token_multiplier != 1.0 or request_multiplier != 1.0:
-						api_key_rotation.set_multipliers(token_multiplier, request_multiplier)
+					if token_multiplier != 1.0 or in_token_multiplier != 1.0 or out_token_multiplier != 1.0 or request_multiplier != 1.0:
+						api_key_rotation.set_multipliers(token_multiplier, in_token_multiplier, out_token_multiplier, request_multiplier)
 
 					# Set credit rates if configured
 					credit_rates = self._extract_credit_rates(instance_config)
@@ -328,8 +330,8 @@ class ModelRegistry:
 							api_key_rotation.set_rate_limits(rate_limits)
 
 						# Set usage multipliers (how much each token/request counts)
-						if token_multiplier != 1.0 or request_multiplier != 1.0:
-							api_key_rotation.set_multipliers(token_multiplier, request_multiplier)
+						if token_multiplier != 1.0 or in_token_multiplier != 1.0 or out_token_multiplier != 1.0 or request_multiplier != 1.0:
+							api_key_rotation.set_multipliers(token_multiplier, in_token_multiplier, out_token_multiplier, request_multiplier)
 
 						# Set credit rates if configured
 						credit_rates = self._extract_credit_rates(instance_config)
