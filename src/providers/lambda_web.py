@@ -1,6 +1,5 @@
 import requests
 import json
-import time
 from .base import Provider, TransformedRequest, TransformedResponse
 
 class LambdaProvider(Provider):
@@ -10,7 +9,6 @@ class LambdaProvider(Provider):
 
 	def translate_request(self, messages, model_id, **kwargs) -> TransformedRequest:
 		history = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
-		# data is a dict
 		return TransformedRequest(
 			data={"model": model_id, "prompt": history},
 			original_model_id=model_id,
@@ -19,10 +17,18 @@ class LambdaProvider(Provider):
 
 	def make_request(self, request_data, api_key) -> dict:
 		s = requests.Session()
+		s.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"})
 		s.cookies.set("hf-chat", api_key)
+
+		# 1. SvelteKit Pre-Flight (Evasiveness)
+		s.get("https://lambda.chat/", timeout=10)
 		init = s.post(self.base_url, json={"model": request_data["model"]}, timeout=self.timeout)
 		cid = init.json().get("conversationId")
 
+		# Fetch conversation metadata like a real browser
+		s.get(f"{self.base_url}/{cid}/__data.json?x-sveltekit-invalidated=11", timeout=10)
+
+		# 2. Actual Completion
 		resp = s.post(f"{self.base_url}/{cid}", json={"text": request_data["prompt"], "conversation": cid}, timeout=self.timeout)
 		full_text = "".join([json.loads(l).get("text", "") for l in resp.text.split("\n") if l.strip()])
 		return {"content": full_text}
