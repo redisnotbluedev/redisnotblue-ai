@@ -364,7 +364,7 @@ class MetricsPersistence:
 
 	def extract_provider_metrics(self, provider_instance) -> Dict[str, Any]:
 		"""Extract metrics from a ProviderInstance for persistence."""
-		return {
+		metrics = {
 			"consecutive_failures": provider_instance.consecutive_failures,
 			"last_failure": provider_instance.last_failure,
 			"circuit_breaker_state": provider_instance.circuit_breaker.state,
@@ -377,6 +377,21 @@ class MetricsPersistence:
 			"p95_ttft": provider_instance.speed_tracker.get_p95_ttft(),
 		}
 
+		# Extract per-key circuit breaker states
+		if provider_instance.api_key_rotation:
+			per_key_circuit_breakers = {}
+			for i, key in enumerate(provider_instance.api_key_rotation.api_keys):
+				cb = provider_instance.api_key_rotation.circuit_breakers[key]
+				per_key_circuit_breakers[str(i)] = {
+					"state": cb.state,
+					"failure_count": cb.failure_count,
+					"success_count": cb.success_count,
+					"last_failure_time": cb.last_failure_time,
+				}
+			metrics["per_key_circuit_breakers"] = per_key_circuit_breakers
+
+		return metrics
+
 	def restore_provider_metrics(self, provider_instance, metrics: Dict[str, Any]) -> None:
 		"""Restore metrics from disk to a ProviderInstance."""
 		try:
@@ -388,6 +403,21 @@ class MetricsPersistence:
 			cb.state = metrics.get("circuit_breaker_state", "closed")
 			cb.fail_count = metrics.get("circuit_breaker_fail_count", 0)
 			cb.success_count = metrics.get("circuit_breaker_success_count", 0)
+
+			# Restore per-key circuit breaker states
+			if provider_instance.api_key_rotation and "per_key_circuit_breakers" in metrics:
+				for key_index, cb_data in metrics["per_key_circuit_breakers"].items():
+					try:
+						idx = int(key_index)
+						if 0 <= idx < len(provider_instance.api_key_rotation.api_keys):
+							api_key = provider_instance.api_key_rotation.api_keys[idx]
+							cb = provider_instance.api_key_rotation.circuit_breakers[api_key]
+							cb.state = cb_data.get("state", "closed")
+							cb.failure_count = cb_data.get("failure_count", 0)
+							cb.success_count = cb_data.get("success_count", 0)
+							cb.last_failure_time = cb_data.get("last_failure_time")
+					except (ValueError, IndexError):
+						continue  # Skip invalid indices
 
 			# Restore persisted speed tracker aggregates
 			st = provider_instance.speed_tracker

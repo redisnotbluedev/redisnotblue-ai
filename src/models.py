@@ -628,20 +628,22 @@ class ExponentialBackoff:
 
 @dataclass
 class ApiKeyRotation:
-	"""Manages multiple API keys with round-robin rotation."""
+	"""Manages multiple API keys with round-robin rotation and per-key circuit breakers."""
 	api_keys: List[str]
 	current_index: int = 0
 	consecutive_failures: dict = field(default_factory=dict)
 	disabled_keys: dict = field(default_factory=dict)
 	rate_limiters: dict = field(default_factory=dict)
+	circuit_breakers: dict = field(default_factory=dict)  # Per-key circuit breakers
 	cooldown_seconds: int = 600
 	global_rate_limiters: Optional[dict] = None  # Shared trackers across all models
 
 	def __post_init__(self):
-		"""Initialize failure tracking and rate limiters for all keys."""
+		"""Initialize failure tracking, rate limiters, and circuit breakers for all keys."""
 		for key in self.api_keys:
 			self.consecutive_failures[key] = 0
 			self.disabled_keys[key] = None
+			self.circuit_breakers[key] = CircuitBreaker()
 			# Use global tracker if provided, otherwise create local one
 			if self.global_rate_limiters is not None and key in self.global_rate_limiters:
 				self.rate_limiters[key] = self.global_rate_limiters[key]
@@ -697,7 +699,7 @@ class ApiKeyRotation:
 
 	def get_next_key(self, required_credits: float = 0.0) -> Optional[str]:
 		"""Get the next available API key using round-robin.
-		
+
 		Args:
 			required_credits: Credits needed for the request (optional)
 		"""
@@ -708,8 +710,9 @@ class ApiKeyRotation:
 
 		available_keys = [
 			key for key in self.api_keys
-			if self.disabled_keys.get(key) is None 
+			if self.disabled_keys.get(key) is None
 			and not self.rate_limiters[key].is_rate_limited()
+			and self.circuit_breakers[key].can_attempt_request()
 			and (required_credits == 0.0 or self.rate_limiters[key].has_sufficient_credits(required_credits))
 		]
 
@@ -737,6 +740,7 @@ class ApiKeyRotation:
 			return
 		self.consecutive_failures[api_key] += 1
 		self.disabled_keys[api_key] = time.time()
+		self.circuit_breakers[api_key].record_failure()
 
 	def mark_success(self, api_key: str) -> None:
 		"""Mark an API key as having succeeded."""
@@ -744,6 +748,7 @@ class ApiKeyRotation:
 			return
 		self.consecutive_failures[api_key] = 0
 		self.disabled_keys[api_key] = None
+		self.circuit_breakers[api_key].record_success()
 
 	def record_usage(self, api_key: Optional[str], tokens: int = 0, in_tokens: int = 0, out_tokens: int = 0, credits: float = 0.0) -> None:
 		"""Record token/request usage.
@@ -786,6 +791,8 @@ class ApiKeyRotation:
 					"enabled": self.disabled_keys.get(key) is None,
 					"disabled_since": self.disabled_keys.get(key),
 					"rate_limited": self.rate_limiters[key].is_rate_limited(),
+					"circuit_breaker_state": self.circuit_breakers[key].state,
+					"circuit_breaker_can_attempt": self.circuit_breakers[key].can_attempt_request(),
 					"usage": self.rate_limiters[key].get_advanced_usage_stats(),
 				}
 				for i, key in enumerate(self.api_keys)
