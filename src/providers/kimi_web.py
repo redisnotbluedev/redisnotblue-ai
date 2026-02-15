@@ -5,7 +5,7 @@ import json
 import struct
 from .base import Provider, TransformedRequest, TransformedResponse
 
-class KimiProvider(Provider):
+class KimiWebProvider(Provider):
     """Provider for Moonshot Kimi (Kimi-k2)."""
 
     def __init__(self, name: str, config: dict):
