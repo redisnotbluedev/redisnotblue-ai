@@ -17,7 +17,7 @@
 				"properties": {
 					"type": {
 						"type": "string",
-						"enum": ["openai", "copilot", "antigravity", "deepseek_web", "glm_web", "kimi_web", "yupp"],
+						"enum": ["openai", "copilot", "antigravity", "deepseek_web", "glm_web", "kimi_web", "yupp", "sixfinger"],
 						"description": "Provider type. See PROVIDERS.md for more information."
 					},
 					"base_url": {
