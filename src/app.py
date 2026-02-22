@@ -222,7 +222,7 @@ async def chat_completions(request: ChatCompletionRequest):
 	if not model:
 		raise HTTPException(status_code=404, detail=f"Model not found: {request.model}")
 
-	messages = [msg.model_dump() for msg in request.messages]
+	messages = [msg.model_dump(exclude_none=True) for msg in request.messages]
 
 	kwargs = {}
 	if request.temperature is not None:
