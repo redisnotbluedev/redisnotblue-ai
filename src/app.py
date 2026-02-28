@@ -245,12 +245,12 @@ async def chat_completions(request: ChatCompletionRequest):
 	if not available_providers:
 		raise HTTPException(status_code=503, detail="No available providers for this model")
 
-	# Prioritize: providers with no data first, then by health score
-	no_data_providers = [p for p in available_providers if len(p.speed_tracker.response_times) == 0]
-	has_data_providers = [p for p in available_providers if len(p.speed_tracker.response_times) > 0]
+	# Prioritize: unused providers first, then by the configured routing algorithm
+	unused_providers = [p for p in available_providers if p.is_unused]
+	used_providers = [p for p in available_providers if not p.is_unused]
 
-	# Try no-data providers first, then data providers
-	providers_to_try = no_data_providers + has_data_providers
+	# Try unused providers first, then used providers
+	providers_to_try = unused_providers + used_providers
 
 	last_error = None
 	validation_errors = None

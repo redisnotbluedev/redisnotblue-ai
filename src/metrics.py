@@ -401,7 +401,7 @@ class MetricsPersistence:
 			# Restore circuit breaker state
 			cb = provider_instance.circuit_breaker
 			cb.state = metrics.get("circuit_breaker_state", "closed")
-			cb.fail_count = metrics.get("circuit_breaker_fail_count", 0)
+			cb.failure_count = metrics.get("circuit_breaker_fail_count", 0)
 			cb.success_count = metrics.get("circuit_breaker_success_count", 0)
 
 			# Restore per-key circuit breaker states

@@ -895,6 +895,16 @@ class ProviderInstance:
 	speed_tracker: SpeedTracker = field(default_factory=SpeedTracker)
 	_model_id_index: int = field(default=0, init=False, repr=False)  # Tracks current position in model_ids rotation
 
+	@property
+	def has_data(self) -> bool:
+		"""Check if this provider has any performance data (live or persisted)."""
+		return len(self.speed_tracker.response_times) > 0 or self.speed_tracker.persisted_avg_time > 0.0
+
+	@property
+	def is_unused(self) -> bool:
+		"""Check if this provider is completely unused (no data and no failures)."""
+		return not self.has_data and self.consecutive_failures == 0 and self.circuit_breaker.failure_count == 0
+
 	def mark_failure(self) -> None:
 		"""Mark a failure and potentially disable the provider."""
 		self.consecutive_failures += 1
@@ -983,8 +993,7 @@ class ProviderInstance:
 		Priority is applied separately as a relative ranking bonus.
 		"""
 		# Prioritize providers with no data - give them a huge bonus so they get tested
-		has_success_data = len(self.speed_tracker.response_times) > 0
-		if not has_success_data:
+		if self.is_unused:
 			return 200.0
 
 		base_score = 100.0
